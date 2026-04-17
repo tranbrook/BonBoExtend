@@ -1,0 +1,17 @@
+[package]
+name = "bonbo-data"
+version.workspace = true
+edition.workspace = true
+description = "BonBo Data Layer — market data fetching, caching, WebSocket streaming"
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+bonbo-ta = { path = "../bonbo-ta" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+reqwest = { workspace = true }

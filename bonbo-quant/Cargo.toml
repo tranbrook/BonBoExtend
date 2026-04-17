@@ -1,0 +1,17 @@
+[package]
+name = "bonbo-quant"
+version.workspace = true
+edition.workspace = true
+description = "BonBo Backtesting Engine — event-driven strategy simulation"
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+bonbo-ta = { path = "../bonbo-ta" }
+bonbo-data = { path = "../bonbo-data" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }

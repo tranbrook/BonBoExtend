@@ -2,6 +2,11 @@
 members = [
     "bonbo-extend",
     "bonbo-extend-mcp",
+    "bonbo-ta",
+    "bonbo-data",
+    "bonbo-quant",
+    "bonbo-sentinel",
+    "bonbo-risk",
 ]
 resolver = "2"
 
@@ -13,7 +18,7 @@ license = "MIT"
 
 [workspace.dependencies]
 # Async
- tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -38,3 +43,10 @@ reqwest = { version = "0.12", features = ["json"] }
 
 # Async trait
 async-trait = "0.1"
+
+# Decimal for financial math
+rust_decimal = { version = "1", features = ["serde"] }
+rust_decimal_macros = "1"
+
+# UUID
+uuid = { version = "1", features = ["v4"] }

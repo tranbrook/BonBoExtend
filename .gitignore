@@ -1,0 +1,27 @@
+# Build artifacts
+/target/
+**/target/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# BonBo runtime
+*.db
+*.db-shm
+*.db-wal
+.fastembed_cache/
+
+# Logs
+*.log

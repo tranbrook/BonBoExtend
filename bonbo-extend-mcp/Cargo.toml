@@ -1,0 +1,21 @@
+[package]
+name = "bonbo-extend-mcp"
+version.workspace = true
+edition.workspace = true
+description = "BonBo MCP Server — exposes extend tools via MCP protocol"
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "bonbo-extend-mcp"
+path = "src/main.rs"
+
+[dependencies]
+bonbo-extend = { path = "../bonbo-extend" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+async-trait = { workspace = true }

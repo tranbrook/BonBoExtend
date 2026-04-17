@@ -1,0 +1,53 @@
+# BonBo Extend Configuration
+#
+# This file configures the BonBo Extend plugin system.
+# Place in ~/.bonbo/extend.toml
+
+[extend]
+# Enable/disable the extend system
+enabled = true
+
+# Plugin discovery directories
+plugin_dirs = [
+    "~/.bonbo/plugins",
+    "/usr/local/lib/bonbo/plugins",
+]
+
+# MCP Server settings
+[mcp]
+# Enable MCP server for tool discovery
+enabled = true
+# Transport: stdio or sse
+transport = "stdio"
+# SSE port (only used if transport = "sse")
+port = 9876
+
+# Market Data Plugin
+[plugins.market_data]
+enabled = true
+# Cache TTL in seconds
+cache_ttl = 30
+# Default exchange
+exchange = "binance"
+
+# Price Alert Plugin
+[plugins.price_alert]
+enabled = true
+# Max alerts per user
+max_alerts = 50
+# Check interval in seconds
+check_interval = 60
+
+# System Monitor Plugin
+[plugins.system_monitor]
+enabled = true
+# Check interval in seconds
+check_interval = 300
+
+# Price Watcher Service
+[services.price_watcher]
+enabled = false
+check_interval = 30
+# Notification targets
+notify_telegram = true
+notify_webhook = ""

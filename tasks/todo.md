@@ -87,7 +87,19 @@
 - [x] Examples: ta_indicators, risk_management
 - [x] Documentation and examples
 
-## 📋 Remaining (Future)
-- [ ] Performance benchmarks (criterion)
-- [ ] End-to-end testing with BonBo AI Agent
-- [ ] Git commit + tag v0.1.0
+## ✅ Phase G: Analysis & Planning (DONE)
+- [x] Phân tích top 20 crypto thực tế (phantichtop20.md)
+- [x] Thiết kế Self-Learning Plan (5 phases)
+- [x] Tạo docs/SELF_LEARNING_PLAN.md
+
+## 🔧 Phase H: Final Polish (IN PROGRESS — Session 2026-04-18)
+- [x] H1: Performance benchmarks (criterion) — key indicators
+- [x] H2: End-to-end testing with BonBo AI Agent
+- [ ] H3: Git commit all changes + tag v0.1.0
+
+## 📋 Future: Self-Learning Loop (Next Major Phase)
+- [ ] Phase 1: bonbo-journal — Trade Journal & Data Logger (4 MCP tools)
+- [ ] Phase 2: bonbo-scanner — Scheduled Scanner (4 MCP tools)
+- [ ] Phase 3: Learning Engine — Weight Adaptation (4 MCP tools)
+- [ ] Phase 4: Strategy Discovery — 8 strategies + matrix (4 MCP tools)
+- [ ] Phase 5: BonBo AI Agent Integration — System prompt + auto-prompt loop

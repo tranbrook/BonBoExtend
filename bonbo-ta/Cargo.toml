@@ -18,3 +18,9 @@ tracing = { workspace = true }
 [dev-dependencies]
 # For cross-validation tests against known TA-Lib values
 approx = "0.5"
+# Benchmarking
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "indicators"
+harness = false

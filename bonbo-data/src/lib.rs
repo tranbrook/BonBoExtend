@@ -3,5 +3,11 @@
 pub mod cache;
 pub mod fetcher;
 pub mod models;
+pub mod websocket;
 
-pub use models::MarketDataCandle;
+pub use cache::DataCache;
+pub use fetcher::{MarketDataFetcher, parse_klines_response};
+pub use models::{
+    DataResult, DataTimeFrame, FetchRequest, MarketDataCandle,
+};
+pub use websocket::{WebSocketStream, RealtimeTick, RealtimeKline};

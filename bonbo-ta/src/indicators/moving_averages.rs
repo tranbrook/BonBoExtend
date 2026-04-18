@@ -201,7 +201,7 @@ mod tests {
 
     #[test]
     fn test_ema_wilders() {
-        let mut ema = Ema::new_wilders(14).unwrap();
+        let ema = Ema::new_wilders(14).unwrap();
         // Wilder's alpha = 1/14 ≈ 0.07143
         assert_relative_eq!(ema.alpha, 1.0 / 14.0);
     }

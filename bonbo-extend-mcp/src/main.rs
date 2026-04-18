@@ -20,7 +20,10 @@
 
 use anyhow::Result;
 use bonbo_extend::registry::PluginRegistry;
-use bonbo_extend::tools::{MarketDataPlugin, PriceAlertPlugin, SystemMonitorPlugin};
+use bonbo_extend::tools::{
+    MarketDataPlugin, PriceAlertPlugin, SystemMonitorPlugin,
+    TechnicalAnalysisPlugin, BacktestPlugin, SentinelPlugin, RiskPlugin,
+};
 use serde_json::{json, Value};
 use std::sync::Arc;
 use tracing::{debug, error, info};
@@ -29,9 +32,18 @@ use tracing::{debug, error, info};
 
 fn build_registry() -> Result<PluginRegistry> {
     let mut registry = PluginRegistry::new();
+    // Phase 1: Market data & monitoring
     registry.register_tool_plugin(MarketDataPlugin::new())?;
     registry.register_tool_plugin(PriceAlertPlugin::new())?;
     registry.register_tool_plugin(SystemMonitorPlugin::new())?;
+    // Phase A: Technical Analysis
+    registry.register_tool_plugin(TechnicalAnalysisPlugin::new())?;
+    // Phase C: Backtesting
+    registry.register_tool_plugin(BacktestPlugin::new())?;
+    // Phase D: Sentiment & On-chain
+    registry.register_tool_plugin(SentinelPlugin::new())?;
+    // Phase E: Risk Management
+    registry.register_tool_plugin(RiskPlugin::new())?;
     Ok(registry)
 }
 

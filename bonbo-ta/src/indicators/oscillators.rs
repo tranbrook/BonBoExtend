@@ -132,7 +132,6 @@ pub struct Macd {
     fast_ema: Ema,
     slow_ema: Ema,
     signal_ema: Ema,
-    fast_period: usize,
     slow_period: usize,
     signal_period: usize,
 }
@@ -147,7 +146,6 @@ impl Macd {
             fast_ema: Ema::new(fast_period)?,
             slow_ema: Ema::new(slow_period)?,
             signal_ema: Ema::new(signal_period)?,
-            fast_period,
             slow_period,
             signal_period,
         })
@@ -219,8 +217,6 @@ pub struct StochasticResult {
 /// Stochastic Oscillator (%K, %D).
 pub struct Stochastic {
     k_period: usize,
-    d_period: usize,
-    k_buffer: Vec<f64>,
     high_buffer: Vec<f64>,
     low_buffer: Vec<f64>,
     d_sma: crate::indicators::moving_averages::Sma,
@@ -230,8 +226,6 @@ impl Stochastic {
     pub fn new(k_period: usize, d_period: usize) -> Option<Self> {
         Some(Self {
             k_period,
-            d_period,
-            k_buffer: Vec::with_capacity(k_period),
             high_buffer: Vec::with_capacity(k_period),
             low_buffer: Vec::with_capacity(k_period),
             d_sma: crate::indicators::moving_averages::Sma::new(d_period)?,
@@ -322,7 +316,6 @@ impl Cci {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use approx::assert_relative_eq;
 
     #[test]
     fn test_rsi_overbought() {

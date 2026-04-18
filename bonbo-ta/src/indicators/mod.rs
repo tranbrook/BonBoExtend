@@ -17,7 +17,7 @@ mod trend;
 pub use moving_averages::{Sma, Ema};
 pub use oscillators::{Rsi, Macd, MacdResult, Stochastic, StochasticResult, Cci};
 pub use volatility::{BollingerBands, BollingerBandsResult, Atr};
-pub use volume::{Vwap, Obv};
+pub use volume::{Vwap, Obv, VolumeProfile, VolumeBucket, compute_volume_profile};
 pub use trend::{Adx, AdxResult};
 
 // Re-export from parent for convenience

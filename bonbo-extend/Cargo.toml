@@ -28,6 +28,13 @@ dirs = "5"
 # HTTP client (for market data tools)
 reqwest = { version = "0.12", features = ["json"] }
 
+# Quantitative analysis crates
+bonbo-ta = { path = "../bonbo-ta" }
+bonbo-data = { path = "../bonbo-data" }
+bonbo-quant = { path = "../bonbo-quant" }
+bonbo-sentinel = { path = "../bonbo-sentinel" }
+bonbo-risk = { path = "../bonbo-risk" }
+
 [dev-dependencies]
 tokio-test = "0.4"
 tempfile = "3"

@@ -22,11 +22,13 @@
 pub mod error;
 pub mod indicators;
 pub mod models;
+pub mod batch;
 
 pub use error::TaError;
 pub use indicators::{
     Sma, Ema, Rsi, Macd, MacdResult, BollingerBands, BollingerBandsResult,
     Atr, Adx, Stochastic, StochasticResult, Cci, Vwap, Obv,
+    VolumeProfile, VolumeBucket, compute_volume_profile,
 };
 pub use models::{OhlcvCandle, TimeFrame, Signal, SignalType, MarketRegime};
 

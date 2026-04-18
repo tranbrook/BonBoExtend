@@ -98,3 +98,53 @@
 - Benchmarks prove sub-microsecond real-time performance
 - All tools E2E tested with real Binance API data
 - Self-Learning Plan designed for next development phase
+
+## 2026-04-18 13:50 - Session: Self-Learning Loop Phase 1-5 Complete
+
+### Deep Research
+- 707 sources analyzed, 6 agents, 16 iterations
+- Key findings: DMA weight adaptation, BOCPD regime detection, CPCV validation
+- Created docs/RESEARCH_PLAN_V2.md with comprehensive 5-phase plan
+
+### Phase 1: bonbo-journal — Trade Journal (7 tests)
+- SQLite-backed persistent journal store
+- AnalysisSnapshot: full market context at decision time (9 indicators + signals)
+- TradeOutcome: direction_correct, indicator_accuracy, MFE/MAE
+- LearningMetrics: per-indicator + per-regime accuracy tracking
+- 4 MCP tools: journal_trade_entry, journal_trade_outcome, get_trade_journal, get_learning_metrics
+
+### Phase 2: bonbo-regime — Regime Detection (6 tests)
+- BOCPD (Bayesian Online Change Point Detection) with conjugate priors
+- CUSUM-like statistical change detection with baseline tracking
+- RegimeClassifier: BOCPD + indicator-based hybrid approach
+- 5 regimes: TrendingUp, TrendingDown, Ranging, Volatile, Quiet
+- 1 MCP tool: detect_market_regime
+
+### Phase 3: bonbo-learning — DMA Learning Engine (13 tests)
+- Dynamic Model Averaging (Raftery et al. 2010): 2 forgetting factors α=0.99, λ=0.99
+- 9 indicator models with Bayesian posterior updating
+- Regime-specific scoring weights (Trending/Ranging/Volatile)
+- Overfitting metrics: DSR, PBO, Haircut Sharpe
+- Safety: min weight 3%, max change 5%, revert at <45% accuracy
+- 2 MCP tools: get_scoring_weights, get_learning_stats
+
+### Phase 4: bonbo-validation — Strategy Validation (4 tests)
+- CPCV (Combinatorial Purged Cross-Validation) with purging + embargoing
+- Walk-forward validation with degradation tracking
+- ValidationReport: DSR p-value, PBO, statistical significance
+- 1 MCP tool: validate_strategy
+
+### Phase 5: bonbo-scanner — Autonomous Scanner (4 tests)
+- MarketScanner: scored results with alerts
+- ScanScheduler: 3 default schedules (4h market, 24h learning, 168h strategy)
+- Top 20 crypto scanning with regime-aware scoring
+- 2 MCP tools: scan_market, get_scan_schedule
+
+### Final Stats
+- **12 crates** in workspace
+- **31 MCP tools** for BonBo AI Agent
+- **155 unit tests**, 0 fail
+- **0 compiler warnings**
+- **Release binary: 8.5MB**
+- **Git: tag v0.2.0, commit d692bb5**
+- E2E tested: all 31 tools verified via HTTP JSON-RPC

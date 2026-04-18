@@ -1,4 +1,4 @@
-//! Scanner MCP Tools.
+//! Scanner MCP Tools — real market scanning using live Binance data.
 
 use crate::plugin::{PluginContext, PluginMetadata, ParameterSchema, ToolPlugin, ToolSchema};
 use async_trait::async_trait;
@@ -8,12 +8,23 @@ use bonbo_scanner::scanner::MarketScanner;
 use bonbo_scanner::models::ScanConfig;
 use bonbo_scanner::scheduler::ScanScheduler;
 
+/// Simplified analysis result for a symbol.
+#[derive(Debug)]
+struct SymbolAnalysis {
+    symbol: String,
+    price: f64,
+    score: f64,
+    regime: String,
+    signals: Vec<String>,
+    sentiment: f64,
+}
+
 pub struct ScannerPlugin { metadata: PluginMetadata }
 impl ScannerPlugin {
     pub fn new() -> Self {
         Self { metadata: PluginMetadata {
             id: "bonbo-scanner".into(), name: "Market Scanner".into(),
-            version: env!("CARGO_PKG_VERSION").into(), description: "Autonomous market scanning".into(),
+            version: env!("CARGO_PKG_VERSION").into(), description: "Real market scanning with live data".into(),
             author: "BonBo Team".into(), tags: vec!["scanner".into()],
         }}
     }
@@ -24,43 +35,136 @@ impl ToolPlugin for ScannerPlugin {
     fn metadata(&self) -> &PluginMetadata { &self.metadata }
     fn tools(&self) -> Vec<ToolSchema> {
         vec![
-            ToolSchema { name: "scan_market".into(), description: "Scan crypto markets".into(), parameters: vec![
-                ParameterSchema { name: "min_score".into(), param_type: "number".into(), description: "Min score to alert".into(), required: false, default: Some(json!(55)), r#enum: None },
+            ToolSchema { name: "scan_market".into(), description: "Scan real crypto markets — fetches live prices and computes scores".into(), parameters: vec![
+                ParameterSchema { name: "min_score".into(), param_type: "number".into(), description: "Minimum score to alert (default 55)".into(), required: false, default: Some(json!(55)), r#enum: None },
+                ParameterSchema { name: "symbols".into(), param_type: "array".into(), description: "Custom symbol list (uses top 20 if empty)".into(), required: false, default: None, r#enum: None },
             ]},
-            ToolSchema { name: "get_scan_schedule".into(), description: "Scheduled scan config".into(), parameters: vec![] },
+            ToolSchema { name: "get_scan_schedule".into(), description: "View scheduled scan configuration".into(), parameters: vec![] },
         ]
     }
+
     async fn execute_tool(&self, tool_name: &str, args: &Value, _ctx: &PluginContext) -> anyhow::Result<String> {
         match tool_name {
             "scan_market" => {
-                let mut config = ScanConfig::default();
-                config.min_score = args.get("min_score").and_then(|v| v.as_f64()).unwrap_or(55.0);
+                let min_score = args.get("min_score").and_then(|v| v.as_f64()).unwrap_or(55.0);
+
+                let symbols: Vec<String> = args.get("symbols")
+                    .and_then(|v| v.as_array())
+                    .map(|a| a.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+                    .unwrap_or_else(|| vec![
+                        "BTCUSDT","ETHUSDT","SOLUSDT","BNBUSDT","XRPUSDT",
+                        "ADAUSDT","AVAXUSDT","DOGEUSDT","LINKUSDT","DOTUSDT",
+                    ].into_iter().map(String::from).collect());
+
+                let analyses = self.scan_symbols(&symbols).await?;
+
+                let config = ScanConfig {
+                    symbols: symbols.clone(),
+                    min_score,
+                    max_results: 10,
+                    include_backtest: false,
+                };
                 let scanner = MarketScanner::new(config);
-                let data = vec![
-                    ("BTCUSDT".into(), 77_000.0, 68.0, "Ranging".into(), vec!["RSI bullish".into(), "MACD cross".into()], 0.3, 1.2),
-                    ("ETHUSDT".into(), 2_400.0, 62.0, "Ranging".into(), vec!["BB bounce".into()], -0.2, 0.9),
-                    ("SOLUSDT".into(), 150.0, 74.0, "TrendingUp".into(), vec!["EMA cross".into()], 0.5, 1.8),
-                    ("BNBUSDT".into(), 600.0, 48.0, "Ranging".into(), vec![], 0.0, 0.5),
-                    ("XRPUSDT".into(), 2.1, 35.0, "Volatile".into(), vec!["MACD bearish".into()], -0.4, -0.3),
-                ];
+
+                let data: Vec<_> = analyses.iter().map(|a| {
+                    (a.symbol.clone(), a.price, a.score, a.regime.clone(), a.signals.clone(), a.sentiment, 0.0)
+                }).collect();
+
                 let report = scanner.generate_report(data)?;
-                let mut r = format!("🔍 **Scan** | {} symbols | Regime: {}\n\n", report.symbols_scanned, report.regime);
-                for p in &report.top_picks {
-                    let e = match p.recommendation.as_str() { "STRONG_BUY"=>"🟢🟢","BUY"=>"🟢","SELL"=>"🔴","STRONG_SELL"=>"🔴🔴",_=>"⚪" };
-                    r.push_str(&format!("{} {} {:.0} ({}) ${:.0} {}\n", e, p.symbol, p.quant_score, p.recommendation, p.price, p.regime));
+
+                let mut r = format!("🔍 **Live Market Scan**\n📊 Scanned: {} symbols\n\n", report.symbols_scanned);
+
+                r.push_str("**All Scanned:**\n");
+                for a in &analyses {
+                    let emoji = match a.score {
+                        s if s >= 70.0 => "🟢🟢",
+                        s if s >= 55.0 => "🟢",
+                        s if s >= 40.0 => "⚪",
+                        s if s >= 25.0 => "🔴",
+                        _ => "🔴🔴",
+                    };
+                    r.push_str(&format!("{} {} — ${:.2} | Score: {:.0} | {}\n",
+                        emoji, a.symbol, a.price, a.score, a.regime));
                 }
+
+                r.push_str(&format!("\n**Top Picks (score ≥ {:.0}):**\n", min_score));
+                for pick in &report.top_picks {
+                    let emoji = match pick.recommendation.as_str() {
+                        "STRONG_BUY" => "🟢🟢", "BUY" => "🟢", "SELL" => "🔴", "STRONG_SELL" => "🔴🔴", _ => "⚪",
+                    };
+                    r.push_str(&format!("{} {} | {:.0} ({}) | ${:.2}\n",
+                        emoji, pick.symbol, pick.quant_score, pick.recommendation, pick.price));
+                }
+
+                if report.alerts.is_empty() {
+                    r.push_str("\n⚠️ No symbols above threshold.\n");
+                }
+
                 Ok(r)
             }
+
             "get_scan_schedule" => {
                 let scheduler = ScanScheduler::new();
-                let mut r = "⏰ **Schedule**\n".to_string();
-                for s in scheduler.list_scans() {
-                    let st = if s.enabled { "✅" } else { "❌" };
-                    r.push_str(&format!("{} **{}** ({}h)\n", st, s.name, s.interval_hours));
+                let scans = scheduler.list_scans();
+                let mut r = "⏰ **Scan Schedule**\n\n".to_string();
+                for s in scans {
+                    let status = if s.enabled { "✅" } else { "❌" };
+                    r.push_str(&format!("{} **{}** — every {}h ({} symbols)\n", status, s.name, s.interval_hours, s.config.symbols.len()));
                 }
                 Ok(r)
             }
+
             _ => anyhow::bail!("Unknown tool: {}", tool_name),
         }
+    }
+}
+
+impl ScannerPlugin {
+    /// Fetch real 24h tickers from Binance.
+    async fn scan_symbols(&self, symbols: &[String]) -> anyhow::Result<Vec<SymbolAnalysis>> {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(15))
+            .build()?;
+
+        let mut results = Vec::with_capacity(symbols.len());
+
+        for symbol in symbols {
+            let url = format!("https://api.binance.com/api/v3/ticker/24hr?symbol={}", symbol);
+
+            match client.get(&url).send().await {
+                Ok(resp) if resp.status().is_success() => {
+                    let ticker: Value = resp.json().await.unwrap_or_default();
+                    let price = ticker["lastPrice"].as_str().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+                    let change_pct = ticker["priceChangePercent"].as_str().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+
+                    let score = 50.0 + change_pct * 3.0 + if change_pct.abs() > 8.0 { -10.0 } else { 0.0 };
+                    let score = score.clamp(0.0, 100.0);
+
+                    let regime = if change_pct.abs() > 5.0 { "Volatile" }
+                        else if change_pct > 1.5 { "TrendingUp" }
+                        else if change_pct < -1.5 { "TrendingDown" }
+                        else if change_pct.abs() < 0.3 { "Quiet" }
+                        else { "Ranging" };
+
+                    let signals = if change_pct > 2.0 { vec!["Strong momentum".into()] }
+                        else if change_pct < -2.0 { vec!["Selling pressure".into()] }
+                        else { vec![] };
+
+                    results.push(SymbolAnalysis {
+                        symbol: symbol.clone(), price, score,
+                        regime: regime.to_string(), signals,
+                        sentiment: (change_pct / 10.0).clamp(-1.0, 1.0),
+                    });
+                }
+                _ => {
+                    results.push(SymbolAnalysis {
+                        symbol: symbol.clone(), price: 0.0, score: 0.0,
+                        regime: "Error".to_string(), signals: vec![], sentiment: 0.0,
+                    });
+                }
+            }
+        }
+
+        Ok(results)
     }
 }

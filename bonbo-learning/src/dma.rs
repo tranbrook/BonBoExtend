@@ -141,6 +141,19 @@ impl DynamicModelAveraging {
         &self.models
     }
 
+    /// Get mutable reference to a model by name.
+    pub fn get_mut_model(&mut self, name: &str) -> Option<&mut DmaModel> {
+        self.models.get_mut(name)
+    }
+
+    /// Set weights directly (for restoring persisted state).
+    pub fn set_weights(&mut self, weights: &[f64]) {
+        if weights.len() == self.weights.len() {
+            self.weights = weights.to_vec();
+            self.normalize_weights();
+        }
+    }
+
     /// Get weight history.
     pub fn get_history(&self) -> &[WeightSnapshot] {
         &self.weight_history

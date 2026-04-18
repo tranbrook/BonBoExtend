@@ -97,9 +97,15 @@
 - [x] H2: End-to-end testing with BonBo AI Agent
 - [x] H3: Git commit all changes + tag v0.1.0
 
-## 📋 Future: Self-Learning Loop (Next Major Phase)
-- [ ] Phase 1: bonbo-journal — Trade Journal & Data Logger (4 MCP tools)
-- [ ] Phase 2: bonbo-scanner — Scheduled Scanner (4 MCP tools)
-- [ ] Phase 3: Learning Engine — Weight Adaptation (4 MCP tools)
-- [ ] Phase 4: Strategy Discovery — 8 strategies + matrix (4 MCP tools)
-- [ ] Phase 5: BonBo AI Agent Integration — System prompt + auto-prompt loop
+## 📋 Future: Self-Learning Loop (IN PROGRESS — Session 2026-04-18)
+- [x] Phase 1: bonbo-journal — Trade Journal & Data Logger (4 MCP tools)
+- [x] Phase 2: bonbo-scanner — Scheduled Scanner (4 MCP tools)
+- [x] Phase 3: Learning Engine — Weight Adaptation (4 MCP tools)
+- [x] Phase 4: Validation — CPCV + Walk-Forward (4 MCP tools)
+- [x] Phase 5: Regime Detection — BOCPD + Classifier (4 MCP tools)
+- [x] MCP Server: 32 tools running on port 9876
+- [x] Self-learning script: scripts/self_learn.py
+- [x] First self-learning cycle completed — 10 journal entries recorded
+- [x] Continuous self-learning loop running (every 10 minutes)
+- [ ] Phase 6: Strategy Discovery — 8 strategies + matrix (4 MCP tools)
+- [ ] Phase 7: BonBo AI Agent Integration — System prompt + auto-prompt loop

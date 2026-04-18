@@ -148,3 +148,38 @@
 - **Release binary: 8.5MB**
 - **Git: tag v0.2.0, commit d692bb5**
 - E2E tested: all 31 tools verified via HTTP JSON-RPC
+
+## 2026-04-18 17:00 - Session: Self-Learning Loop Running
+
+### Build & Start
+- Verified workspace builds clean: `cargo check --workspace` ✅ 0 errors
+- Verified tests: 35 unit tests pass, 0 fail
+- Built release binary: `cargo build --release -p bonbo-extend-mcp`
+- Started MCP server HTTP mode on port 9876 (32 tools loaded)
+
+### Self-Learning Script: scripts/self_learn.py
+- Created autonomous self-learning loop script
+- 6-step cycle: SCAN → ANALYZE → BACKTEST → JOURNAL → REVIEW → LEARN
+- Supports `--once` (single cycle) and `--interval N` (continuous) modes
+- Parses MCP tool results, extracts scores/indicators automatically
+- Logs to ~/.bonbo/self_learning/learning_log.txt
+
+### First Cycle Results (13.4s)
+- Scanned 10 symbols via scan_market
+- Top picks: BTC (53), ETH (52), BNB (51)
+- Deep analysis with indicators, signals, regime, sentiment for each
+- Backtested 4 strategies per symbol (SMA cross, RSI reversal, BB bounce, MACD cross)
+- Recorded 3 journal entries (BTC, ETH, BNB)
+- Market regime: Ranging for all (consistent)
+- Fear & Greed: 26/100 (Fear)
+
+### Continuous Learning
+- Started background loop: every 10 minutes (600s interval)
+- 10 journal entries accumulated from 2 cycles
+- Learning engine initialized with default weights (9 indicators)
+- Weights will adapt after 20+ trades with outcomes
+
+### Status
+- **32 MCP tools** operational
+- **10 journal entries** recorded
+- **Continuous learning** running (PID active)

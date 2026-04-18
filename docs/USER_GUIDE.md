@@ -1,8 +1,9 @@
-# 📖 BonBoExtend v0.2.0 — Hướng Dẫn Sử Dụng Chi Tiết
+# 📖 BonBoExtend v0.2.1 — Hướng Dẫn Sử Dụng Chi Tiết
 
-**Phiên bản:** v0.2.0  
+**Phiên bản:** v0.2.1  
 **Ngày:** 2026-04-18  
 **Tác giả:** BonBo AI Team  
+**Trạng thái Self-Learning:** ✅ Hoạt động — DMA thực sự học từ dữ liệu quá khứ  
 
 ---
 
@@ -290,7 +291,8 @@ curl -s -H "Content-Type: application/json" http://localhost:9876/ -d '{
 ### 5.4 Bước 3: Ghi Nhận Vào Journal
 
 ```bash
-# Sau khi phân tích xong, ghi nhận quyết định
+# Sau khi phân tích xong, ghi nhận quyết định KÈM INDICATOR VALUES
+# Quan trọng: truyền RSI, MACD, BB, signals để DMA có data học
 curl -s -H "Content-Type: application/json" http://localhost:9876/ -d '{
   "jsonrpc": "2.0",
   "method": "tools/call",
@@ -302,7 +304,12 @@ curl -s -H "Content-Type: application/json" http://localhost:9876/ -d '{
       "recommendation": "BUY",
       "quant_score": 68,
       "stop_loss": 74500,
-      "target_price": 81000
+      "target_price": 81000,
+      "rsi": 42,
+      "macd_histogram": 0.5,
+      "bb_percent_b": 0.35,
+      "buy_signals": 3,
+      "sell_signals": 1
     }
   },
   "id": 1
@@ -311,12 +318,15 @@ curl -s -H "Content-Type: application/json" http://localhost:9876/ -d '{
 
 **Kết quả:**
 ```
-📝 **Trade Entry**
-ID: `970ce9e6-07c8-45e7-8018-e6dab73af400`
+📝 **Trade Entry Recorded**
+ID: `a2bdc731-56b0-4796-933a-673877212cb4`
 BTCUSDT @ $77066.00
-BUY | Score: 68
-SL: $74500.00 TP: $81000.00 R:R 2.5
+BUY | Score: 68/100
+SL: $74500.00 | TP: $81000.00 | R:R = 2.6
+📋 Snapshot saved with RSI=42 MACD_H=0.50 BB%B=0.35
 ```
+
+> ⚠️ **QUAN TRỌNG:** Truyền `rsi`, `macd_histogram`, `bb_percent_b`, `buy_signals`, `sell_signals` để DMA biết indicator nào dự đoán đúng/sai → tự điều chỉnh weights!
 
 > ⚠️ **QUAN TRỌNG:** Lưu lại `ID` — cần dùng để ghi nhận kết quả sau!
 
@@ -366,13 +376,28 @@ curl -s -H "Content-Type: application/json" http://localhost:9876/ -d '{
 }'
 ```
 
-**Kết quả (sau 4 trades):**
+**Kết quả (sau 3 trades thực tế):**
 ```
-📊 **Learning Metrics**
-Predictions: 4 | Outcomes: 4
-Direction: 75.0% | Win: 50.0% | Avg Ret: +0.88%
-Sharpe: 5.35 | PF: 1.37 | Recent10: 75.0%
+✅ **Trade Outcome Recorded**
+
+ID: `a2bdc731-56b0-4796-933a-673877212cb4`
+Exit: $79500.00 | Return: +3.14%
+Direction: Correct ✅
+
+🧠 **DMA Learning Update:**
+  Total updates: 1
+**Indicator accuracy this trade:**
+  rsi: ✅
+  macd: ✅
+  bb: ✅
+  signals: ✅
+  backtest: ❌
+  sentiment: ❌
+📊 6/9 indicators correct → weights adapted
 ```
+
+> 🎉 **DMA tự động điều chỉnh weights sau MỖI kết quả!**
+> Indicators đúng → weight tăng, indicators sai → weight giảm.
 
 ### 5.8 Xem Weights & DMA State
 

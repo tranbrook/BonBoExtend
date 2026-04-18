@@ -7,6 +7,11 @@ members = [
     "bonbo-quant",
     "bonbo-sentinel",
     "bonbo-risk",
+    "bonbo-journal",
+    "bonbo-regime",
+    "bonbo-learning",
+    "bonbo-validation",
+    "bonbo-scanner",
 ]
 resolver = "2"
 

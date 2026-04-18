@@ -95,7 +95,7 @@
 ## 🔧 Phase H: Final Polish (IN PROGRESS — Session 2026-04-18)
 - [x] H1: Performance benchmarks (criterion) — key indicators
 - [x] H2: End-to-end testing with BonBo AI Agent
-- [ ] H3: Git commit all changes + tag v0.1.0
+- [x] H3: Git commit all changes + tag v0.1.0
 
 ## 📋 Future: Self-Learning Loop (Next Major Phase)
 - [ ] Phase 1: bonbo-journal — Trade Journal & Data Logger (4 MCP tools)

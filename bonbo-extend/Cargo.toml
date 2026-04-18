@@ -34,6 +34,11 @@ bonbo-data = { path = "../bonbo-data" }
 bonbo-quant = { path = "../bonbo-quant" }
 bonbo-sentinel = { path = "../bonbo-sentinel" }
 bonbo-risk = { path = "../bonbo-risk" }
+bonbo-journal = { path = "../bonbo-journal" }
+bonbo-regime = { path = "../bonbo-regime" }
+bonbo-learning = { path = "../bonbo-learning" }
+bonbo-validation = { path = "../bonbo-validation" }
+bonbo-scanner = { path = "../bonbo-scanner" }
 
 [dev-dependencies]
 tokio-test = "0.4"

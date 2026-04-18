@@ -23,6 +23,7 @@ use bonbo_extend::registry::PluginRegistry;
 use bonbo_extend::tools::{
     MarketDataPlugin, PriceAlertPlugin, SystemMonitorPlugin,
     TechnicalAnalysisPlugin, BacktestPlugin, SentinelPlugin, RiskPlugin,
+    JournalPlugin, RegimePlugin, LearningPlugin, ValidationPlugin, ScannerPlugin,
 };
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -44,6 +45,16 @@ fn build_registry() -> Result<PluginRegistry> {
     registry.register_tool_plugin(SentinelPlugin::new())?;
     // Phase E: Risk Management
     registry.register_tool_plugin(RiskPlugin::new())?;
+    // Phase 1: Journal
+    registry.register_tool_plugin(JournalPlugin::new())?;
+    // Phase 2: Regime Detection
+    registry.register_tool_plugin(RegimePlugin::new())?;
+    // Phase 3: Learning Engine
+    registry.register_tool_plugin(LearningPlugin::new())?;
+    // Phase 4: Validation
+    registry.register_tool_plugin(ValidationPlugin::new())?;
+    // Phase 5: Scanner
+    registry.register_tool_plugin(ScannerPlugin::new())?;
     Ok(registry)
 }
 

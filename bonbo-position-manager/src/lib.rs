@@ -23,10 +23,14 @@ pub struct ManagedPosition {
     pub quantity: rust_decimal::Decimal,
     /// Original quantity (for partial close tracking).
     pub original_quantity: rust_decimal::Decimal,
-    /// Stop-loss order ID.
+    /// Stop-loss order ID (standard).
     pub sl_order_id: Option<i64>,
-    /// Take-profit order IDs (TP1, TP2, TP3).
+    /// Take-profit order IDs (standard).
     pub tp_order_ids: Vec<i64>,
+    /// Stop-loss algo order ID (Algo API).
+    pub sl_algo_id: Option<i64>,
+    /// Take-profit algo order IDs (Algo API).
+    pub tp_algo_ids: Vec<i64>,
     /// Take-profit levels.
     pub tp_levels: Vec<rust_decimal::Decimal>,
     /// TP percentages to close.
@@ -61,6 +65,8 @@ impl ManagedPosition {
             original_quantity: quantity,
             sl_order_id: None,
             tp_order_ids: Vec::new(),
+            sl_algo_id: None,
+            tp_algo_ids: Vec::new(),
             tp_levels: Vec::new(),
             tp_pcts: vec![60, 30], // TP1: 60%, TP2: 30%
             is_long,
@@ -90,13 +96,27 @@ impl ManagedPosition {
         diff / self.entry_price * rust_decimal::Decimal::ONE_HUNDRED
     }
 
-    /// Get all associated order IDs (SL + TPs).
+    /// Get all associated algo order IDs (SL algo + TP algos).
+    pub fn all_algo_ids(&self) -> Vec<i64> {
+        let mut ids = Vec::new();
+        if let Some(sl) = self.sl_algo_id {
+            ids.push(sl);
+        }
+        ids.extend(&self.tp_algo_ids);
+        ids
+    }
+
+    /// Get all associated order IDs (standard SL + TPs + algo SL + TP algos).
     pub fn all_order_ids(&self) -> Vec<i64> {
         let mut ids = Vec::new();
         if let Some(sl) = self.sl_order_id {
             ids.push(sl);
         }
         ids.extend(&self.tp_order_ids);
+        if let Some(sl) = self.sl_algo_id {
+            ids.push(sl);
+        }
+        ids.extend(&self.tp_algo_ids);
         ids
     }
 }

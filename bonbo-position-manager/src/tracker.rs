@@ -76,6 +76,22 @@ impl PositionTracker {
         }
     }
 
+    /// Set SL algo order ID.
+    pub async fn set_sl_algo_id(&self, symbol: &str, algo_id: i64) {
+        let mut positions = self.positions.write().await;
+        if let Some(pos) = positions.get_mut(symbol) {
+            pos.sl_algo_id = Some(algo_id);
+        }
+    }
+
+    /// Add a TP algo order ID.
+    pub async fn add_tp_algo_id(&self, symbol: &str, algo_id: i64) {
+        let mut positions = self.positions.write().await;
+        if let Some(pos) = positions.get_mut(symbol) {
+            pos.tp_algo_ids.push(algo_id);
+        }
+    }
+
     /// Update high/low price for trailing stop.
     pub async fn update_price(&self, symbol: &str, price: rust_decimal::Decimal) {
         let mut positions = self.positions.write().await;

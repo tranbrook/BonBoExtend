@@ -1,4 +1,7 @@
 //! Order builder — constructs order requests for common patterns.
+//!
+//! Entry orders use standard `/fapi/v1/order`.
+//! SL/TP orders should use Algo API `/fapi/v1/algoOrder` via `AlgoOrdersClient`.
 
 use bonbo_binance_futures::models::*;
 use rust_decimal::Decimal;

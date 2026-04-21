@@ -1,10 +1,12 @@
 //! REST API client for Binance USDⓈ-M Futures.
 
 pub mod account;
+pub mod algo_orders;
 pub mod market;
 pub mod orders;
 
 pub use account::AccountClient;
+pub use algo_orders::AlgoOrdersClient;
 pub use market::MarketClient;
 pub use orders::OrdersClient;
 

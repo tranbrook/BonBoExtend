@@ -126,10 +126,10 @@ pub fn detect_market_regime(candles: &[OhlcvCandle]) -> MarketRegime {
     let closes: Vec<f64> = candles.iter().map(|c| c.close).collect();
 
     // ── Primary: Hurst Exponent (if enough data) ──
-    if n >= 100 {
-        if let Some(h) = HurstExponent::compute(&closes) {
+    if n >= 100
+        && let Some(h) = HurstExponent::compute(&closes) {
             // Compute volatility for additional context
-            let volatility_pct = compute_volatility_pct(&candles);
+            let volatility_pct = compute_volatility_pct(candles);
 
             // Hurst-based regime with volatility override
             if volatility_pct > 0.05 {
@@ -161,10 +161,9 @@ pub fn detect_market_regime(candles: &[OhlcvCandle]) -> MarketRegime {
                 return MarketRegime::Ranging;
             }
         }
-    }
 
     // ── Fallback: Simple trend + volatility (for short windows) ──
-    let volatility_pct = compute_volatility_pct(&candles);
+    let volatility_pct = compute_volatility_pct(candles);
     let trend_strength = compute_simple_trend(&closes);
 
     if volatility_pct > 0.05 {
@@ -431,8 +430,8 @@ pub fn generate_signals(analysis: &FullAnalysis, _price: f64) -> Vec<Signal> {
     if let (Some(alma_fast), Some(alma_slow)) = (
         analysis.alma10.last().and_then(|v| *v),
         analysis.alma30.last().and_then(|v| *v),
-    ) {
-        if alma_slow > 0.0 {
+    )
+        && alma_slow > 0.0 {
             let diff_pct = (alma_fast - alma_slow) / alma_slow;
             let (sig_type, confidence, reason) = if diff_pct > 0.005 {
                 // ALMA fast > slow by >0.5%
@@ -474,7 +473,6 @@ pub fn generate_signals(analysis: &FullAnalysis, _price: f64) -> Vec<Signal> {
                 });
             }
         }
-    }
 
     // SuperSmoother slope — Ehlers DSP momentum
     if analysis.super_smoother20.len() >= 2 {
@@ -484,8 +482,8 @@ pub fn generate_signals(analysis: &FullAnalysis, _price: f64) -> Vec<Signal> {
             .get(analysis.super_smoother20.len() - 2)
             .and_then(|v| *v);
 
-        if let (Some(curr_val), Some(prev_val)) = (curr, prev) {
-            if prev_val > 0.0 {
+        if let (Some(curr_val), Some(prev_val)) = (curr, prev)
+            && prev_val > 0.0 {
                 let slope_pct = (curr_val - prev_val) / prev_val * 100.0;
                 let (sig_type, confidence, reason) = if slope_pct > 0.02 {
                     (
@@ -516,7 +514,6 @@ pub fn generate_signals(analysis: &FullAnalysis, _price: f64) -> Vec<Signal> {
                     });
                 }
             }
-        }
     }
 
     // Hurst Exponent — regime signal (informational, affects other indicator weights)

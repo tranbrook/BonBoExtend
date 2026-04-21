@@ -97,12 +97,10 @@ impl TrailingStopManager {
             } else {
                 None
             }
+        } else if new_sl < original_sl {
+            Some(new_sl)
         } else {
-            if new_sl < original_sl {
-                Some(new_sl)
-            } else {
-                None
-            }
+            None
         }
     }
 }

@@ -130,10 +130,10 @@ impl Strategy for EhlersTrendStrategy {
             .unwrap_or(0.0);
 
         // Update trailing stop
-        if let Some(_entry) = self.entry_price {
-            if let Some(atr_v) = atr_val {
-                if atr_v > 0.0 {
-                    if ctx.has_position(symbol) {
+        if let Some(_entry) = self.entry_price
+            && let Some(atr_v) = atr_val
+                && atr_v > 0.0
+                    && ctx.has_position(symbol) {
                         // Long position: trail up
                         let new_stop = candle.close - 2.0 * atr_v;
                         self.trailing_stop = Some(
@@ -142,14 +142,11 @@ impl Strategy for EhlersTrendStrategy {
                                 .unwrap_or(new_stop),
                         );
                     }
-                }
-            }
-        }
 
         // Check trailing stop exit
         if ctx.has_position(symbol) {
-            if let Some(stop) = self.trailing_stop {
-                if candle.close <= stop {
+            if let Some(stop) = self.trailing_stop
+                && candle.close <= stop {
                     orders.push(Order {
                         id: format!("ord-stop-{}", ctx.bar_index),
                         symbol: symbol.to_string(),
@@ -165,7 +162,6 @@ impl Strategy for EhlersTrendStrategy {
                     self.trailing_stop = None;
                     return orders;
                 }
-            }
 
             // Exit on crossover reversal
             if crossover_down {
@@ -326,8 +322,8 @@ impl Strategy for EnhancedMeanReversionStrategy {
             }
 
             // Stop loss check (2×ATR)
-            if let Some(atr_v) = atr_val {
-                if let Some(pos) = ctx.positions.get(symbol) {
+            if let Some(atr_v) = atr_val
+                && let Some(pos) = ctx.positions.get(symbol) {
                     let stop = pos.0 - 2.0 * atr_v;
                     if candle.close <= stop {
                         orders.push(Order {
@@ -345,7 +341,6 @@ impl Strategy for EnhancedMeanReversionStrategy {
                         return orders;
                     }
                 }
-            }
         }
 
         // Entry: BB extreme + RSI(2) extreme + Hurst mean-reverting
@@ -406,6 +401,12 @@ pub struct AlmaCrossoverStrategy {
     prev_slow: Option<f64>,
     entry_price: Option<f64>,
     trailing_stop: Option<f64>,
+}
+
+impl Default for AlmaCrossoverStrategy {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AlmaCrossoverStrategy {
@@ -475,8 +476,8 @@ impl Strategy for AlmaCrossoverStrategy {
                 }
 
                 // Trailing stop update
-                if ctx.has_position(symbol) {
-                    if let Some(atr) = atr_val {
+                if ctx.has_position(symbol)
+                    && let Some(atr) = atr_val {
                         let new_stop = candle.close - 2.0 * atr;
                         if self.trailing_stop.is_none() || new_stop > self.trailing_stop.unwrap() {
                             self.trailing_stop = Some(new_stop);
@@ -497,7 +498,6 @@ impl Strategy for AlmaCrossoverStrategy {
                             self.trailing_stop = None;
                         }
                     }
-                }
             }
             self.prev_fast = Some(f);
             self.prev_slow = Some(s);
@@ -611,8 +611,8 @@ impl Strategy for LaguerreRsiStrategy {
                 }
 
                 // Trailing stop
-                if ctx.has_position(symbol) {
-                    if let Some(atr) = atr_val {
+                if ctx.has_position(symbol)
+                    && let Some(atr) = atr_val {
                         let new_stop = candle.close - 2.0 * atr;
                         if self.trailing_stop.is_none() || new_stop > self.trailing_stop.unwrap() {
                             self.trailing_stop = Some(new_stop);
@@ -633,7 +633,6 @@ impl Strategy for LaguerreRsiStrategy {
                             self.trailing_stop = None;
                         }
                     }
-                }
             }
             self.prev_lag = Some(lag);
         }
@@ -746,8 +745,8 @@ impl Strategy for CmoMomentumStrategy {
                 }
 
                 // Trailing stop
-                if ctx.has_position(symbol) {
-                    if let Some(atr) = atr_val {
+                if ctx.has_position(symbol)
+                    && let Some(atr) = atr_val {
                         let new_stop = candle.close - 2.0 * atr;
                         if self.trailing_stop.is_none() || new_stop > self.trailing_stop.unwrap() {
                             self.trailing_stop = Some(new_stop);
@@ -768,7 +767,6 @@ impl Strategy for CmoMomentumStrategy {
                             self.trailing_stop = None;
                         }
                     }
-                }
             }
             self.prev_cmo = Some(cmo);
         }
@@ -945,8 +943,8 @@ impl Strategy for FhCompositeStrategy {
             }
 
             // Trailing stop
-            if ctx.has_position(symbol) {
-                if let Some(atr) = atr_val {
+            if ctx.has_position(symbol)
+                && let Some(atr) = atr_val {
                     let new_stop = candle.close - 2.0 * atr;
                     if self.trailing_stop.is_none() || new_stop > self.trailing_stop.unwrap() {
                         self.trailing_stop = Some(new_stop);
@@ -967,7 +965,6 @@ impl Strategy for FhCompositeStrategy {
                         self.trailing_stop = None;
                     }
                 }
-            }
 
             self.prev_fast = Some(f);
             self.prev_slow = Some(s);

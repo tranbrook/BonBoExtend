@@ -47,6 +47,11 @@ impl IdempotencyTracker {
     pub async fn len(&self) -> usize {
         self.used_ids.read().await.len()
     }
+
+    /// Check if there are no tracked IDs.
+    pub async fn is_empty(&self) -> bool {
+        self.used_ids.read().await.is_empty()
+    }
 }
 
 impl Default for IdempotencyTracker {

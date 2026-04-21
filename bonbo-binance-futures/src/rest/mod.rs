@@ -25,7 +25,8 @@ pub struct FuturesRestClient {
     auth: Auth,
     /// Rate limiter.
     rate_limiter: RateLimiter,
-    /// Request timeout.
+    /// Request timeout (reserved for future per-request timeout).
+    #[allow(dead_code)]
     timeout: std::time::Duration,
 }
 

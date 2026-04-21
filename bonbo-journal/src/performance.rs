@@ -33,35 +33,35 @@ impl<'a> PerformanceTracker<'a> {
         // Direction accuracy
         let direction_correct = with_outcome
             .iter()
-            .filter(|e| e.outcome.as_ref().unwrap().direction_correct)
+            .filter(|e| e.outcome.as_ref().expect("filtered above").direction_correct)
             .count() as u32;
         let direction_accuracy = direction_correct as f64 / total_with_outcome as f64;
 
         // Score error
         let avg_score_error = with_outcome
             .iter()
-            .map(|e| e.outcome.as_ref().unwrap().score_accuracy)
+            .map(|e| e.outcome.as_ref().expect("filtered above").score_accuracy)
             .sum::<f64>()
             / total_with_outcome as f64;
 
         // Win rate (positive return)
         let winners = with_outcome
             .iter()
-            .filter(|e| e.outcome.as_ref().unwrap().actual_return_pct > 0.0)
+            .filter(|e| e.outcome.as_ref().expect("filtered above").actual_return_pct > 0.0)
             .count() as u32;
         let win_rate = winners as f64 / total_with_outcome as f64;
 
         // Average return
         let avg_return_pct = with_outcome
             .iter()
-            .map(|e| e.outcome.as_ref().unwrap().actual_return_pct)
+            .map(|e| e.outcome.as_ref().expect("filtered above").actual_return_pct)
             .sum::<f64>()
             / total_with_outcome as f64;
 
         // Sharpe of predictions (simplified annualized)
         let returns: Vec<f64> = with_outcome
             .iter()
-            .map(|e| e.outcome.as_ref().unwrap().actual_return_pct / 100.0)
+            .map(|e| e.outcome.as_ref().expect("filtered above").actual_return_pct / 100.0)
             .collect();
         let sharpe = compute_sharpe(&returns);
 
@@ -79,7 +79,7 @@ impl<'a> PerformanceTracker<'a> {
         // Per-indicator accuracy
         let mut indicator_stats: HashMap<String, (u32, u32)> = HashMap::new();
         for entry in &with_outcome {
-            let outcome = entry.outcome.as_ref().unwrap();
+            let outcome = entry.outcome.as_ref().expect("filtered above");
             for (indicator, &correct) in &outcome.indicator_accuracy {
                 let (total, correct_count) =
                     indicator_stats.entry(indicator.clone()).or_insert((0, 0));
@@ -112,7 +112,7 @@ impl<'a> PerformanceTracker<'a> {
         let mut regime_stats: HashMap<String, (u32, u32, f64)> = HashMap::new();
         for entry in &with_outcome {
             let regime_str = format!("{:?}", entry.snapshot.market_regime);
-            let outcome = entry.outcome.as_ref().unwrap();
+            let outcome = entry.outcome.as_ref().expect("filtered above");
             let (total, correct, sum_return) = regime_stats
                 .entry(regime_str.clone())
                 .or_insert((0, 0, 0.0));
@@ -151,7 +151,7 @@ impl<'a> PerformanceTracker<'a> {
             let recent: Vec<_> = with_outcome.iter().rev().take(10).collect();
             let recent_correct = recent
                 .iter()
-                .filter(|e| e.outcome.as_ref().unwrap().direction_correct)
+                .filter(|e| e.outcome.as_ref().expect("filtered above").direction_correct)
                 .count();
             recent_correct as f64 / 10.0
         } else {

@@ -1,0 +1,23 @@
+[package]
+name = "bonbo-position-manager"
+version.workspace = true
+edition.workspace = true
+description = "Position tracking, trailing stops, orphan cleanup for Binance Futures"
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+rust_decimal = { workspace = true }
+chrono = { workspace = true }
+bonbo-binance-futures = { path = "../bonbo-binance-futures" }
+bonbo-risk = { path = "../bonbo-risk" }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full", "test-util"] }
+rust_decimal_macros = "1"

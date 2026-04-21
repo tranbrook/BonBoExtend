@@ -1,0 +1,26 @@
+[package]
+name = "bonbo-agent"
+version.workspace = true
+edition.workspace = true
+description = "24/7 autonomous trading agent orchestrator for Binance Futures"
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+rust_decimal = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+toml = "0.8"
+bonbo-binance-futures = { path = "../bonbo-binance-futures" }
+bonbo-executor = { path = "../bonbo-executor" }
+bonbo-position-manager = { path = "../bonbo-position-manager" }
+bonbo-risk = { path = "../bonbo-risk" }
+bonbo-data = { path = "../bonbo-data" }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full", "test-util"] }

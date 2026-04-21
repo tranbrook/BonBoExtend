@@ -12,6 +12,11 @@ members = [
     "bonbo-learning",
     "bonbo-validation",
     "bonbo-scanner",
+    "bonbo-binance-futures",
+    "bonbo-executor",
+    "bonbo-position-manager",
+    "bonbo-agent",
+    "bonbo-funding",
 ]
 resolver = "2"
 

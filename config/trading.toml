@@ -1,0 +1,51 @@
+# BonBo Trading Agent Configuration
+# Copy to config/trading.toml and customize
+
+[account]
+mode = "testnet"              # "testnet" | "dry_run" | "live"
+initial_capital = 1000.0
+currency = "USDT"
+
+[risk]
+max_leverage = 3
+max_position_pct = 30          # % equity per position
+max_open_positions = 3
+daily_loss_limit_pct = 3       # -3% → stop all
+max_drawdown_pct = 10          # -10% → close all
+min_risk_reward = 1.5
+max_daily_trades = 10
+consecutive_loss_pause = 5     # pause after 5 consecutive losses
+
+[execution]
+order_type = "LIMIT"           # LIMIT or MARKET
+slippage_tolerance_pct = 0.1
+use_trailing_stop = true
+partial_close = true           # TP1/TP2/TP3
+tp1_pct = 60                   # close 60% at TP1
+tp2_pct = 30                   # close 30% at TP2
+
+[strategy]
+min_quant_score = 70           # only trade if score ≥ 70
+min_hurst = 0.55               # only trade trending markets
+min_24h_volume_usd = 1000000
+max_funding_rate_pct = 0.1
+scan_interval_minutes = 60     # scan every hour
+timeframes = ["1h", "4h", "1d"]
+
+[watchlist]
+symbols = [
+    "BTCUSDT", "ETHUSDT", "BNBUSDT",
+    "XRPUSDT", "SOLUSDT", "PENDLEUSDT",
+    "DOGEUSDT", "AVAXUSDT", "ADAUSDT"
+]
+
+[telegram]
+enabled = false
+bot_token = ""                 # set via TELEGRAM_BOT_TOKEN env var
+chat_id = ""                   # set via TELEGRAM_CHAT_ID env var
+notify_on = ["trade_executed", "sl_hit", "tp_hit", "daily_summary", "kill_switch"]
+
+[monitoring]
+health_check_interval_seconds = 60
+max_uptime_hours = 168         # restart weekly
+log_level = "info"

@@ -1,0 +1,22 @@
+[package]
+name = "bonbo-executor"
+version.workspace = true
+edition.workspace = true
+description = "Order execution with Saga pattern for Binance Futures"
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+rust_decimal = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+bonbo-binance-futures = { path = "../bonbo-binance-futures" }
+bonbo-data = { path = "../bonbo-data" }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full", "test-util"] }

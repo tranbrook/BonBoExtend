@@ -16,6 +16,7 @@ rust_decimal = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
 toml = "0.8"
+async-trait = "0.1"
 bonbo-binance-futures = { path = "../bonbo-binance-futures" }
 bonbo-executor = { path = "../bonbo-executor" }
 bonbo-position-manager = { path = "../bonbo-position-manager" }

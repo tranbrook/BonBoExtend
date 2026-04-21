@@ -50,3 +50,9 @@ fn rand_jitter(max_ms: u64) -> u64 {
         .as_nanos() as u64;
     now % (max_ms.max(1))
 }
+
+/// Public wrapper for testing.
+#[doc(hidden)]
+pub fn rand_jitter_for_test(max_ms: u64) -> u64 {
+    rand_jitter(max_ms)
+}

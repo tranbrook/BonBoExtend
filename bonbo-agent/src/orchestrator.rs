@@ -53,9 +53,20 @@ impl Orchestrator {
             .unwrap_or(rust_decimal::Decimal::ONE_THOUSAND);
         let decision_loop = DecisionLoop::new(
             self.config.clone(),
-            rest_client,
             equity,
         );
+
+        // Create executor based on mode
+        let executor: Box<dyn crate::OrderExecutor> = if let Some(client) = rest_client {
+            tracing::info!("📡 Using LIVE executor");
+            Box::new(crate::LiveOrderExecutor::new(client))
+        } else {
+            tracing::info!("🧪 Using DRY-RUN executor");
+            Box::new(crate::DryRunOrderExecutor::new())
+        };
+
+        // Create MCP client (mock for now, real implementation connects to MCP server)
+        let mcp: Box<dyn crate::McpClient> = Box::new(crate::mock_mcp::MockMcpClient::default());
 
         // Main loop
         let interval_dur = std::time::Duration::from_secs(self.config.strategy.scan_interval_minutes * 60);
@@ -72,7 +83,7 @@ impl Orchestrator {
                 break;
             }
 
-            if let Err(e) = decision_loop.run_cycle().await {
+            if let Err(e) = decision_loop.run_cycle(mcp.as_ref(), executor.as_ref()).await {
                 tracing::error!("Cycle error: {}", e);
                 // Don't crash — continue next cycle
             }

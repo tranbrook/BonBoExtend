@@ -1,39 +1,30 @@
-# BonBoExtend — Code Graph Recommendations Implementation
+# BonBoExtend — Knowledge Gaps Implementation
 
-## Khuyến nghị từ Code Graph Analysis
+## Phase 1: WebSocket Integration Tests
+- [ ] 1.1 Create integration test framework for WebSocket connections
+- [ ] 1.2 Test market data stream (kline, mark price) with mock server
+- [ ] 1.3 Test user data stream (account/order updates) with mock server
+- [ ] 1.4 Test auto-reconnect behavior (disconnect → reconnect)
+- [ ] 1.5 Test subscription management (subscribe/unsubscribe)
+- [ ] 1.6 Test message parsing for all event types
 
-### K1: Thêm tests cho FH strategies (advanced_strategies::on_bar — hub #10, 0 tests)
-- [x] Test AlmaCrossoverStrategy entry/exit logic
-- [x] Test LaguerreRsiStrategy oversold/overbought
-- [x] Test CmoMomentumStrategy momentum signals
-- [x] Test FhCompositeStrategy weighted scoring + Hurst veto
-- [x] Test EhlersTrendStrategy SuperSmoother + Hurst filter
-- [x] Test EnhancedMeanReversionStrategy
-- [x] Test cross-strategy comparison (no panic, extreme prices)
-- [x] All 31 tests passing
+## Phase 2: Connect Decision Loop to MCP Tools
+- [ ] 2.1 Create McpClient trait for abstract tool calls
+- [ ] 2.2 Implement scan_candidates() — calls scan_market MCP tool
+- [ ] 2.3 Implement analyze_candidates() — calls analyze_indicators + get_trading_signals
+- [ ] 2.4 Add regime check via detect_market_regime MCP tool
+- [ ] 2.5 Add funding rate filter via funding MCP tool
+- [ ] 2.6 Integration test: full decision cycle with mock MCP
 
-### K2: Thêm tests cho compare_strategies (46 callees, 0 tests)
-- [x] Test run_backtest with each FH strategy (alma, laguerre, cmo, fh_composite, ehlers, enhanced_mr)
-- [x] Test error handling for unknown strategy
-- [x] Test compare_strategies with FH strategies
-- [x] All 10 backtest tests passing
+## Phase 3: Refactor Executor to Trait-based Design
+- [ ] 3.1 Create OrderExecutor trait (execute, cancel, query)
+- [ ] 3.2 Implement LiveExecutor wrapping FuturesRestClient
+- [ ] 3.3 Implement DryRunExecutor without FuturesRestClient dependency
+- [ ] 3.4 Update SagaExecutor to use trait instead of concrete client
+- [ ] 3.5 Update DecisionLoop to work with trait
+- [ ] 3.6 Tests for both Live and DryRun paths
 
-### K3: Tích hợp fh_analysis.py vào analyze_top100.py (isolated node)
-- [x] Đánh giá: fh_analysis.py phục vụ mục đích khác (quick analysis), không nên merge
-- [x] Thêm note cross-reference trong fh_analysis.py header
-
-### K4: Refactor models.rs::new (betweenness 0.95, bottleneck toàn hệ thống)
-- [x] Phân tích: models.rs chứa simple data structs (MarketDataCandle, FetchRequest)
-- [x] Kết luận: Betweenness cao do code graph aggregation, không cần builder pattern
-- [x] Thêm PluginMetadata::new() builder helper trong plugin.rs để giảm boilerplate
-
-### K5: Thêm tests cho Python scripts (untested hotspots)
-- [x] 14 unit tests cho parsers (indicators, signals, regime, backtest)
-- [x] Tests cho FH scoring methods (hurst, laguerre, ALMA, CMO, weighted signals)
-- [x] Test score_coin comprehensive
-- [x] Test cache roundtrip
-- [x] All 14 Python tests passing
-
-### K6: Cleanup boilerplate metadata()/tools() trong services
-- [x] Thêm PluginMetadata::new() builder pattern trong plugin.rs
-- [x] Giảm boilerplate cho metadata creation
+## Verification
+- [ ] cargo test --workspace — 0 failures
+- [ ] cargo clippy — 0 warnings  
+- [ ] cargo build --release — clean

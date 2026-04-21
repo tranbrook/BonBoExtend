@@ -129,6 +129,11 @@ impl RiskGate {
         }
     }
 
+    /// Get current equity.
+    pub fn equity(&self) -> Decimal {
+        self.current_equity
+    }
+
     /// Update equity after a trade.
     pub fn update_equity(&mut self, new_equity: Decimal) {
         if new_equity > self.peak_equity {

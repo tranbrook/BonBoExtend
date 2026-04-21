@@ -189,6 +189,7 @@ name = "bonbo-agent"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "bonbo-binance-futures",
  "bonbo-data",
  "bonbo-executor",

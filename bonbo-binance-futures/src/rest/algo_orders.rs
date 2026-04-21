@@ -359,8 +359,8 @@ impl AlgoOrdersClient {
     /// (DELETE /fapi/v1/algoOrder/all returns 404 on current Binance API,
     /// so we query + cancel one by one.)
     pub async fn cancel_all_algo_orders(
-        client: &FuturesRestClient,
-        symbol: &str,
+        _client: &FuturesRestClient,
+        _symbol: &str,
     ) -> anyhow::Result<Vec<AlgoCancelResponse>> {
         // We cannot query all open orders by symbol (endpoint returns 404).
         // Instead, we rely on the PositionTracker to know the algo IDs.

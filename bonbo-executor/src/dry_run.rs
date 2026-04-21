@@ -1,6 +1,5 @@
 //! Dry-run executor — simulates order execution without real API calls.
 
-use bonbo_binance_futures::rest::FuturesRestClient;
 use crate::saga::{SagaResult, TradeParams};
 use crate::SagaExecutor;
 

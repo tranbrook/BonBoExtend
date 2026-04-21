@@ -160,7 +160,7 @@ impl DecisionLoop {
     }
 
     /// Analyze candidates with MTF analysis (placeholder — uses MCP tools in production).
-    async fn analyze_candidates(&self, symbols: Vec<String>) -> Vec<TradeParams> {
+    async fn analyze_candidates(&self, _symbols: Vec<String>) -> Vec<TradeParams> {
         // In production: call analyze_indicators, get_trading_signals, compare_strategies
         // Placeholder: return empty
         Vec::new()

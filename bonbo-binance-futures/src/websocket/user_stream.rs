@@ -23,7 +23,7 @@ pub async fn start_user_stream(
 
     // Spawn keepalive task (every 25 minutes)
     let keepalive_client = rest_client.clone();
-    let listen_key_clone = listen_key.clone();
+    let _listen_key_clone = listen_key.clone();
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(25 * 60));
         loop {

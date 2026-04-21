@@ -5,7 +5,7 @@
 
 use crate::config::AgentConfig;
 use crate::kill_switch::KillSwitch;
-use crate::mcp_client::{IndicatorResult, McpClient, ScanResult};
+use crate::mcp_client::{McpClient, ScanResult};
 use crate::order_executor::OrderExecutor;
 use crate::risk_gate::RiskGate;
 use crate::state_machine::AgentState;
@@ -223,8 +223,8 @@ impl DecisionLoop {
 
             // Check Hurst exponent
             let min_hurst = self.config.strategy.min_hurst;
-            if let Some(hurst) = indicator.hurst {
-                if hurst < min_hurst {
+            if let Some(hurst) = indicator.hurst
+                && hurst < min_hurst {
                     tracing::debug!(
                         "Skipping {}: Hurst {:.3} < min {:.2}",
                         candidate.symbol,
@@ -233,7 +233,6 @@ impl DecisionLoop {
                     );
                     continue;
                 }
-            }
 
             // Check minimum score
             if indicator.score < self.config.strategy.min_quant_score {
@@ -343,11 +342,11 @@ impl DecisionLoop {
 
     /// Activate kill switch.
     pub async fn activate_kill_switch(&self) {
-        self.kill_switch.activate().await;
+        let _ = self.kill_switch.activate().await;
     }
 
     /// Deactivate kill switch.
     pub async fn deactivate_kill_switch(&self) {
-        self.kill_switch.deactivate().await;
+        let _ = self.kill_switch.deactivate().await;
     }
 }

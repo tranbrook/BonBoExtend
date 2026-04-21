@@ -1,8 +1,8 @@
 //! Strategy trait and built-in strategies.
 
-use crate::models::{Trade, Order, OrderSide, OrderType};
-use bonbo_ta::indicators::{Sma, Rsi};
+use crate::models::{Order, OrderSide, OrderType, Trade};
 use bonbo_ta::IncrementalIndicator;
+use bonbo_ta::indicators::{Rsi, Sma};
 use bonbo_ta::models::OhlcvCandle;
 use std::collections::HashMap;
 
@@ -61,7 +61,9 @@ impl SmaCrossoverStrategy {
 }
 
 impl Strategy for SmaCrossoverStrategy {
-    fn name(&self) -> &str { "SMA Crossover" }
+    fn name(&self) -> &str {
+        "SMA Crossover"
+    }
 
     fn on_bar(&mut self, ctx: &mut StrategyContext, candle: &OhlcvCandle) -> Vec<Order> {
         let fast = self.fast_sma.next(candle.close);
@@ -136,7 +138,9 @@ impl RsiMeanReversionStrategy {
 }
 
 impl Strategy for RsiMeanReversionStrategy {
-    fn name(&self) -> &str { "RSI Mean Reversion" }
+    fn name(&self) -> &str {
+        "RSI Mean Reversion"
+    }
 
     fn on_bar(&mut self, ctx: &mut StrategyContext, candle: &OhlcvCandle) -> Vec<Order> {
         let rsi_val = self.rsi.next(candle.close);

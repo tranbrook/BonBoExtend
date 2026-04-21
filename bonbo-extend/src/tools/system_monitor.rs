@@ -1,7 +1,7 @@
 //! System Monitor Plugin — system health and resource monitoring.
 
-use async_trait::async_trait;
 use crate::plugin::*;
+use async_trait::async_trait;
 
 /// Plugin for system monitoring tools.
 pub struct SystemMonitorPlugin {
@@ -83,10 +83,9 @@ impl ToolPlugin for SystemMonitorPlugin {
             "check_port" => {
                 let port = arguments["port"]
                     .as_u64()
-                    .ok_or_else(|| anyhow::anyhow!("port is required"))? as u16;
-                let host = arguments["host"]
-                    .as_str()
-                    .unwrap_or("127.0.0.1");
+                    .ok_or_else(|| anyhow::anyhow!("port is required"))?
+                    as u16;
+                let host = arguments["host"].as_str().unwrap_or("127.0.0.1");
                 check_port(host, port).await
             }
             "disk_usage" => get_disk_usage().await,
@@ -105,7 +104,11 @@ async fn get_system_status() -> anyhow::Result<String> {
     }
 
     // Memory
-    if let Ok(output) = tokio::process::Command::new("free").args(["-h"]).output().await {
+    if let Ok(output) = tokio::process::Command::new("free")
+        .args(["-h"])
+        .output()
+        .await
+    {
         let mem = String::from_utf8_lossy(&output.stdout);
         for line in mem.lines().take(2) {
             lines.push(line.to_string());
@@ -127,18 +130,20 @@ async fn get_system_status() -> anyhow::Result<String> {
 }
 
 async fn check_port(host: &str, port: u16) -> anyhow::Result<String> {
-    use tokio::net::TcpStream;
     use std::time::Duration;
+    use tokio::net::TcpStream;
 
     let addr = format!("{}:{}", host, port);
-    let result = tokio::time::timeout(
-        Duration::from_secs(3),
-        TcpStream::connect(&addr),
-    ).await;
+    let result = tokio::time::timeout(Duration::from_secs(3), TcpStream::connect(&addr)).await;
 
     match result {
         Ok(Ok(_)) => Ok(format!("✅ Port {} on {} is OPEN", port, host)),
-        Ok(Err(e)) => Ok(format!("❌ Port {} on {} is CLOSED ({})", port, host, e.kind())),
+        Ok(Err(e)) => Ok(format!(
+            "❌ Port {} on {} is CLOSED ({})",
+            port,
+            host,
+            e.kind()
+        )),
         Err(_) => Ok(format!("⏱️ Port {} on {} — TIMEOUT", port, host)),
     }
 }

@@ -38,6 +38,38 @@ pub struct PluginContext {
     pub state: std::sync::Arc<tokio::sync::RwLock<serde_json::Value>>,
 }
 
+impl PluginMetadata {
+    /// Create metadata with a simple builder pattern.
+    pub fn new(id: &str, name: &str, description: &str) -> Self {
+        Self {
+            id: id.to_string(),
+            name: name.to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            description: description.to_string(),
+            author: "BonBo".to_string(),
+            tags: vec![],
+        }
+    }
+
+    /// Set version.
+    pub fn with_version(mut self, version: &str) -> Self {
+        self.version = version.to_string();
+        self
+    }
+
+    /// Set author.
+    pub fn with_author(mut self, author: &str) -> Self {
+        self.author = author.to_string();
+        self
+    }
+
+    /// Set tags.
+    pub fn with_tags(mut self, tags: &[&str]) -> Self {
+        self.tags = tags.iter().map(|s| s.to_string()).collect();
+        self
+    }
+}
+
 impl PluginContext {
     /// Create a new plugin context.
     pub fn new(bonbo_data_dir: std::path::PathBuf, plugin_id: &str) -> Self {
@@ -62,7 +94,10 @@ impl PluginContext {
 
     /// Get an environment variable or default.
     pub fn env_or(&self, key: &str, default: &str) -> String {
-        self.env_vars.get(key).cloned().unwrap_or_else(|| default.to_string())
+        self.env_vars
+            .get(key)
+            .cloned()
+            .unwrap_or_else(|| default.to_string())
     }
 }
 
@@ -106,8 +141,14 @@ impl ToolSchema {
 
         for param in &self.parameters {
             let mut prop = serde_json::Map::new();
-            prop.insert("type".to_string(), serde_json::Value::String(param.param_type.clone()));
-            prop.insert("description".to_string(), serde_json::Value::String(param.description.clone()));
+            prop.insert(
+                "type".to_string(),
+                serde_json::Value::String(param.param_type.clone()),
+            );
+            prop.insert(
+                "description".to_string(),
+                serde_json::Value::String(param.description.clone()),
+            );
 
             if let Some(default) = &param.default {
                 prop.insert("default".to_string(), default.clone());

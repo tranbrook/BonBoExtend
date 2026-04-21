@@ -78,16 +78,31 @@ impl IncrementalIndicator for BollingerBands {
 
         let upper = mean + self.multiplier * std_dev;
         let lower = mean - self.multiplier * std_dev;
-        let bandwidth = if mean != 0.0 { (upper - lower) / mean } else { 0.0 };
-        let percent_b = if upper != lower { (input - lower) / (upper - lower) } else { 0.5 };
+        let bandwidth = if mean.abs() > f64::EPSILON {
+            (upper - lower) / mean
+        } else {
+            0.0
+        };
+        let percent_b = if (upper - lower).abs() > f64::EPSILON {
+            (input - lower) / (upper - lower)
+        } else {
+            0.5
+        };
 
-        Some(BollingerBandsResult {
+        let result = BollingerBandsResult {
             upper,
             middle: mean,
             lower,
             bandwidth,
             percent_b: percent_b.clamp(0.0, 1.0),
-        })
+        };
+
+        // Guard against NaN/Inf
+        if result.upper.is_nan() || result.lower.is_nan() {
+            None
+        } else {
+            Some(result)
+        }
     }
 
     fn reset(&mut self) {

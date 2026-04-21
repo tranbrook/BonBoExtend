@@ -3,8 +3,8 @@
 use crate::plugin::{PluginContext, PluginMetadata, ServicePlugin};
 use async_trait::async_trait;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::RwLock;
 use tracing::info;
 
@@ -52,10 +52,7 @@ impl PriceWatcherService {
     /// Add a price watch.
     pub async fn add_watch(&self, watch: PriceWatch) {
         let mut watches = self.watches.write().await;
-        watches
-            .entry(watch.symbol.clone())
-            .or_default()
-            .push(watch);
+        watches.entry(watch.symbol.clone()).or_default().push(watch);
     }
 
     /// Remove watches for a symbol.
@@ -81,15 +78,19 @@ impl ServicePlugin for PriceWatcherService {
             while running.load(Ordering::SeqCst) {
                 let watch_snapshot = watches.read().await.clone();
                 if !watch_snapshot.is_empty() {
-                    for (symbol, _watch_list) in &watch_snapshot {
+                    for symbol in watch_snapshot.keys() {
                         // Check current price against watches
                         if let Ok(current_price) = fetch_current_price(symbol).await {
                             let watches_guard = watches.read().await;
                             if let Some(wlist) = watches_guard.get(symbol) {
                                 for watch in wlist {
                                     let triggered = match &watch.direction {
-                                        WatchDirection::Above => current_price >= watch.target_price,
-                                        WatchDirection::Below => current_price <= watch.target_price,
+                                        WatchDirection::Above => {
+                                            current_price >= watch.target_price
+                                        }
+                                        WatchDirection::Below => {
+                                            current_price <= watch.target_price
+                                        }
                                     };
                                     if triggered {
                                         info!(
@@ -113,7 +114,10 @@ impl ServicePlugin for PriceWatcherService {
             info!("Price watcher service stopped");
         });
 
-        info!("Price watcher service started (interval: {}s)", self.check_interval_secs);
+        info!(
+            "Price watcher service started (interval: {}s)",
+            self.check_interval_secs
+        );
         Ok(())
     }
 

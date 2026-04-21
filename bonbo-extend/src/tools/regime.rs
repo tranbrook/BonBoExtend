@@ -1,39 +1,92 @@
 //! Regime MCP Tools — BOCPD regime detection from real market data.
 
-use crate::plugin::{PluginContext, PluginMetadata, ParameterSchema, ToolPlugin, ToolSchema};
+use crate::plugin::{ParameterSchema, PluginContext, PluginMetadata, ToolPlugin, ToolSchema};
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use bonbo_regime::classifier::RegimeClassifier;
 use bonbo_regime::models::{MarketRegime, RegimeConfig};
 
-pub struct RegimePlugin { metadata: PluginMetadata }
+pub struct RegimePlugin {
+    metadata: PluginMetadata,
+}
+impl Default for RegimePlugin {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RegimePlugin {
     pub fn new() -> Self {
-        Self { metadata: PluginMetadata {
-            id: "bonbo-regime".into(), name: "Regime Detection".into(),
-            version: env!("CARGO_PKG_VERSION").into(), description: "BOCPD regime detection from real data".into(),
-            author: "BonBo Team".into(), tags: vec!["regime".into()],
-        }}
+        Self {
+            metadata: PluginMetadata {
+                id: "bonbo-regime".into(),
+                name: "Regime Detection".into(),
+                version: env!("CARGO_PKG_VERSION").into(),
+                description: "BOCPD regime detection from real data".into(),
+                author: "BonBo Team".into(),
+                tags: vec!["regime".into()],
+            },
+        }
     }
 }
 
 #[async_trait]
 impl ToolPlugin for RegimePlugin {
-    fn metadata(&self) -> &PluginMetadata { &self.metadata }
+    fn metadata(&self) -> &PluginMetadata {
+        &self.metadata
+    }
     fn tools(&self) -> Vec<ToolSchema> {
-        vec![ToolSchema { name: "detect_market_regime".into(), description: "Detect market regime from real price data using BOCPD + statistical analysis".into(), parameters: vec![
-            ParameterSchema { name: "symbol".into(), param_type: "string".into(), description: "Symbol (e.g., BTCUSDT)".into(), required: true, default: None, r#enum: None },
-            ParameterSchema { name: "timeframe".into(), param_type: "string".into(), description: "Timeframe for data".into(), required: false, default: Some(json!("4h")), r#enum: Some(vec!["1h".into(),"4h".into(),"1d".into()]) },
-            ParameterSchema { name: "closes".into(), param_type: "array".into(), description: "Optional: provide close prices directly (auto-fetched if empty)".into(), required: false, default: None, r#enum: None },
-        ]}]
+        vec![ToolSchema {
+            name: "detect_market_regime".into(),
+            description:
+                "Detect market regime from real price data using BOCPD + statistical analysis"
+                    .into(),
+            parameters: vec![
+                ParameterSchema {
+                    name: "symbol".into(),
+                    param_type: "string".into(),
+                    description: "Symbol (e.g., BTCUSDT)".into(),
+                    required: true,
+                    default: None,
+                    r#enum: None,
+                },
+                ParameterSchema {
+                    name: "timeframe".into(),
+                    param_type: "string".into(),
+                    description: "Timeframe for data".into(),
+                    required: false,
+                    default: Some(json!("4h")),
+                    r#enum: Some(vec!["1h".into(), "4h".into(), "1d".into()]),
+                },
+                ParameterSchema {
+                    name: "closes".into(),
+                    param_type: "array".into(),
+                    description: "Optional: provide close prices directly (auto-fetched if empty)"
+                        .into(),
+                    required: false,
+                    default: None,
+                    r#enum: None,
+                },
+            ],
+        }]
     }
 
-    async fn execute_tool(&self, tool_name: &str, args: &Value, _ctx: &PluginContext) -> anyhow::Result<String> {
+    async fn execute_tool(
+        &self,
+        tool_name: &str,
+        args: &Value,
+        _ctx: &PluginContext,
+    ) -> anyhow::Result<String> {
         match tool_name {
             "detect_market_regime" => {
-                let symbol = args["symbol"].as_str().ok_or_else(|| anyhow::anyhow!("symbol required"))?;
-                let timeframe = args.get("timeframe").and_then(|v| v.as_str()).unwrap_or("4h");
+                let symbol = args["symbol"]
+                    .as_str()
+                    .ok_or_else(|| anyhow::anyhow!("symbol required"))?;
+                let timeframe = args
+                    .get("timeframe")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("4h");
 
                 // Try to use provided closes, or fetch from Binance
                 let closes = if let Some(arr) = args.get("closes").and_then(|v| v.as_array()) {
@@ -43,7 +96,10 @@ impl ToolPlugin for RegimePlugin {
                 };
 
                 if closes.len() < 10 {
-                    anyhow::bail!("Need at least 10 close prices, got {}. Try calling analyze_indicators first to cache data.", closes.len());
+                    anyhow::bail!(
+                        "Need at least 10 close prices, got {}. Try calling analyze_indicators first to cache data.",
+                        closes.len()
+                    );
                 }
 
                 let config = RegimeConfig::default();
@@ -60,8 +116,13 @@ impl ToolPlugin for RegimePlugin {
 
                 let mut r = format!(
                     "{} **{} Regime: {}**\n📊 Analyzed: {} candles ({})\n🎯 Confidence: {:.1}% | 🔄 Change Prob: {:.1}%\n\n",
-                    emoji, symbol, state.current_regime, closes.len(), timeframe,
-                    state.confidence * 100.0, state.change_probability * 100.0
+                    emoji,
+                    symbol,
+                    state.current_regime,
+                    closes.len(),
+                    timeframe,
+                    state.confidence * 100.0,
+                    state.change_probability * 100.0
                 );
 
                 r.push_str("**Regime Probabilities:**\n");
@@ -72,8 +133,13 @@ impl ToolPlugin for RegimePlugin {
                 }
 
                 if let Some(cp) = &state.last_change_point {
-                    r.push_str(&format!("\n📍 Last change: index {} ({:.0}% conf) {} → {}\n",
-                        cp.index, cp.confidence * 100.0, cp.prev_regime, cp.new_regime));
+                    r.push_str(&format!(
+                        "\n📍 Last change: index {} ({:.0}% conf) {} → {}\n",
+                        cp.index,
+                        cp.confidence * 100.0,
+                        cp.prev_regime,
+                        cp.new_regime
+                    ));
                 }
 
                 // Price context
@@ -81,7 +147,10 @@ impl ToolPlugin for RegimePlugin {
                     let first = closes.first().unwrap();
                     let last = closes.last().unwrap();
                     let change_pct = (last - first) / first * 100.0;
-                    r.push_str(&format!("\n💰 Price range: ${:.2} → ${:.2} ({:+.2}%)\n", first, last, change_pct));
+                    r.push_str(&format!(
+                        "\n💰 Price range: ${:.2} → ${:.2} ({:+.2}%)\n",
+                        first, last, change_pct
+                    ));
                 }
 
                 r.push_str("\n💡 **Regime-specific advice:**\n");
@@ -121,8 +190,13 @@ impl RegimePlugin {
 
         let klines: Vec<Vec<Value>> = resp.json().await?;
 
-        let closes: Vec<f64> = klines.iter()
-            .filter_map(|k| k.get(4).and_then(|v| v.as_str()).and_then(|s| s.parse::<f64>().ok()))
+        let closes: Vec<f64> = klines
+            .iter()
+            .filter_map(|k| {
+                k.get(4)
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| s.parse::<f64>().ok())
+            })
             .collect();
 
         Ok(closes)

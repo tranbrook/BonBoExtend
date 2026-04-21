@@ -16,6 +16,37 @@ pub struct MarketDataCandle {
     pub volume: f64,
 }
 
+impl From<MarketDataCandle> for bonbo_ta::OhlcvCandle {
+    fn from(c: MarketDataCandle) -> Self {
+        Self {
+            timestamp: c.timestamp,
+            open: c.open,
+            high: c.high,
+            low: c.low,
+            close: c.close,
+            volume: c.volume,
+        }
+    }
+}
+
+impl From<&MarketDataCandle> for bonbo_ta::OhlcvCandle {
+    fn from(c: &MarketDataCandle) -> Self {
+        Self {
+            timestamp: c.timestamp,
+            open: c.open,
+            high: c.high,
+            low: c.low,
+            close: c.close,
+            volume: c.volume,
+        }
+    }
+}
+
+/// Convert a slice of `MarketDataCandle` to `OhlcvCandle`.
+pub fn to_ohlcv(candles: &[MarketDataCandle]) -> Vec<bonbo_ta::OhlcvCandle> {
+    candles.iter().map(Into::into).collect()
+}
+
 /// Supported timeframes for market data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum DataTimeFrame {
@@ -135,7 +166,11 @@ impl DataResult {
     }
 
     /// Create a new DataResult.
-    pub fn new(candles: Vec<MarketDataCandle>, symbol: impl Into<String>, timeframe: impl Into<String>) -> Self {
+    pub fn new(
+        candles: Vec<MarketDataCandle>,
+        symbol: impl Into<String>,
+        timeframe: impl Into<String>,
+    ) -> Self {
         Self {
             candles,
             symbol: symbol.into(),

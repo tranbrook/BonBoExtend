@@ -21,11 +21,11 @@
 use anyhow::Result;
 use bonbo_extend::registry::PluginRegistry;
 use bonbo_extend::tools::{
-    MarketDataPlugin, PriceAlertPlugin, SystemMonitorPlugin,
-    TechnicalAnalysisPlugin, BacktestPlugin, SentinelPlugin, RiskPlugin,
-    JournalPlugin, RegimePlugin, LearningPlugin, ValidationPlugin, ScannerPlugin,
+    BacktestPlugin, JournalPlugin, LearningPlugin, MarketDataPlugin, PriceAlertPlugin,
+    RegimePlugin, RiskPlugin, ScannerPlugin, SentinelPlugin, SystemMonitorPlugin,
+    TechnicalAnalysisPlugin, ValidationPlugin,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 use tracing::{debug, error, info};
 
@@ -92,9 +92,8 @@ fn handle_tools_list(registry: &PluginRegistry, id: Option<Value>) -> Value {
                     prop["default"] = default.clone();
                 }
                 if let Some(enum_vals) = &param.r#enum {
-                    prop["enum"] = Value::Array(
-                        enum_vals.iter().map(|v| Value::String(v.clone())).collect(),
-                    );
+                    prop["enum"] =
+                        Value::Array(enum_vals.iter().map(|v| Value::String(v.clone())).collect());
                 }
                 properties.insert(param.name.clone(), prop);
                 if param.required {
@@ -157,10 +156,7 @@ async fn handle_tools_call(registry: &PluginRegistry, params: Value, id: Option<
 /// Route any JSON-RPC request to the correct handler.
 async fn route_request(registry: &PluginRegistry, request: Value) -> Value {
     let id = request.get("id").cloned();
-    let method = request
-        .get("method")
-        .and_then(|m| m.as_str())
-        .unwrap_or("");
+    let method = request.get("method").and_then(|m| m.as_str()).unwrap_or("");
     let params = request.get("params").cloned().unwrap_or(json!({}));
 
     match method {
@@ -238,7 +234,10 @@ async fn run_http(registry: Arc<PluginRegistry>, port: u16) -> Result<()> {
         State(registry): State<Arc<PluginRegistry>>,
         Json(request): Json<Value>,
     ) -> impl IntoResponse {
-        debug!("HTTP request: {}", serde_json::to_string(&request).unwrap_or_default());
+        debug!(
+            "HTTP request: {}",
+            serde_json::to_string(&request).unwrap_or_default()
+        );
         let response = route_request(&registry, request).await;
         (StatusCode::OK, Json(response))
     }
@@ -285,7 +284,10 @@ async fn main() -> Result<()> {
         .with_writer(std::io::stderr)
         .init();
 
-    info!("Starting BonBo Extend MCP Server v{}", env!("CARGO_PKG_VERSION"));
+    info!(
+        "Starting BonBo Extend MCP Server v{}",
+        env!("CARGO_PKG_VERSION")
+    );
 
     // Build plugin registry
     let registry = build_registry()?;

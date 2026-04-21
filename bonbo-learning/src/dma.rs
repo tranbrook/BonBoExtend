@@ -32,7 +32,8 @@ impl DynamicModelAveraging {
         let labels: Vec<String> = pairs.iter().map(|(n, _)| n.to_string()).collect();
         let w: Vec<f64> = pairs.iter().map(|(_, v)| *v).collect();
 
-        let models: HashMap<String, DmaModel> = labels.iter()
+        let models: HashMap<String, DmaModel> = labels
+            .iter()
             .map(|l| (l.clone(), DmaModel::new(l)))
             .collect();
 
@@ -64,19 +65,29 @@ impl DynamicModelAveraging {
                 }
                 // Exponential moving accuracy
                 let evidence = if correct { 1.0 } else { 0.0 };
-                model.recent_accuracy = self.alpha * model.recent_accuracy + (1.0 - self.alpha) * evidence;
+                model.recent_accuracy =
+                    self.alpha * model.recent_accuracy + (1.0 - self.alpha) * evidence;
                 // Log score update
-                let prob = model.recent_accuracy.max(0.01).min(0.99);
-                model.cumulative_log_score += if correct { prob.ln() } else { (1.0 - prob).ln() };
+                let prob = model.recent_accuracy.clamp(0.01, 0.99);
+                model.cumulative_log_score += if correct {
+                    prob.ln()
+                } else {
+                    (1.0 - prob).ln()
+                };
             }
         }
 
         // 2. Compute predictive likelihoods for each model
-        let likelihoods: Vec<f64> = self.labels.iter().map(|l| {
-            self.models.get(l)
-                .map(|m| m.recent_accuracy.max(0.01))
-                .unwrap_or(0.5)
-        }).collect();
+        let likelihoods: Vec<f64> = self
+            .labels
+            .iter()
+            .map(|l| {
+                self.models
+                    .get(l)
+                    .map(|m| m.recent_accuracy.max(0.01))
+                    .unwrap_or(0.5)
+            })
+            .collect();
 
         // 3. Update weights with forgetting factor
         let old_weights = self.weights.clone();
@@ -95,10 +106,10 @@ impl DynamicModelAveraging {
         }
 
         // Limit max change per cycle
-        for i in 0..self.weights.len() {
-            let change = self.weights[i] - old_weights[i];
+        for (i, weight) in self.weights.iter_mut().enumerate() {
+            let change = *weight - old_weights[i];
             if change.abs() > self.max_change {
-                self.weights[i] = old_weights[i] + change.signum() * self.max_change;
+                *weight = old_weights[i] + change.signum() * self.max_change;
             }
         }
 
@@ -108,7 +119,12 @@ impl DynamicModelAveraging {
         // 6. Record snapshot
         let snapshot = WeightSnapshot {
             timestamp,
-            weights: self.labels.iter().zip(self.weights.iter()).map(|(l, &w)| (l.clone(), w)).collect(),
+            weights: self
+                .labels
+                .iter()
+                .zip(self.weights.iter())
+                .map(|(l, &w)| (l.clone(), w))
+                .collect(),
             trigger: "outcome_update".to_string(),
             regime: regime.to_string(),
         };
@@ -161,9 +177,7 @@ impl DynamicModelAveraging {
 
     /// Check if accuracy is critically low (< 45%) → signal to revert.
     pub fn should_revert_to_defaults(&self) -> bool {
-        let avg_accuracy: f64 = self.models.values()
-            .map(|m| m.recent_accuracy)
-            .sum::<f64>()
+        let avg_accuracy: f64 = self.models.values().map(|m| m.recent_accuracy).sum::<f64>()
             / self.models.len().max(1) as f64;
         avg_accuracy < 0.45
     }
@@ -201,7 +215,7 @@ mod tests {
     #[test]
     fn test_dma_update_increases_good_indicator() {
         let mut dma = make_dma();
-        let initial_rsi = dma.get_weights().rsi_weight;
+        let _initial_rsi = dma.get_weights().rsi_weight;
 
         // RSI is correct 10 times, MACD wrong
         for _ in 0..10 {

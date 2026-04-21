@@ -3,11 +3,13 @@
 //! Run with: cargo bench -p bonbo-ta
 //! Results in: target/criterion/
 
-use bonbo_ta::batch::{compute_full_analysis, detect_market_regime, generate_signals, get_support_resistance};
+use bonbo_ta::IncrementalIndicator;
+use bonbo_ta::batch::{
+    compute_full_analysis, detect_market_regime, generate_signals, get_support_resistance,
+};
 use bonbo_ta::indicators::*;
 use bonbo_ta::models::OhlcvCandle;
-use bonbo_ta::IncrementalIndicator;
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 
 // ─── Helper: Generate synthetic price data ─────────────────────
 
@@ -26,7 +28,8 @@ fn generate_ohlcv(n: usize) -> Vec<OhlcvCandle> {
     let base = 50_000.0;
     (0..n)
         .map(|i| {
-            let close = base + (i as f64) * 0.5
+            let close = base
+                + (i as f64) * 0.5
                 + ((i as f64 * 0.1).sin() * 500.0)
                 + ((i as f64 * 0.37).cos() * 300.0);
             let high = close + 50.0 + (i as f64 * 0.01).sin().abs() * 200.0;
@@ -184,9 +187,13 @@ fn bench_regime_detection(c: &mut Criterion) {
     for size in [100, 1_000] {
         let candles = generate_ohlcv(size);
         group.throughput(Throughput::Elements(size as u64));
-        group.bench_with_input(BenchmarkId::new("detect_regime", size), &candles, |b, data| {
-            b.iter(|| detect_market_regime(black_box(data)));
-        });
+        group.bench_with_input(
+            BenchmarkId::new("detect_regime", size),
+            &candles,
+            |b, data| {
+                b.iter(|| detect_market_regime(black_box(data)));
+            },
+        );
     }
     group.finish();
 }
@@ -198,9 +205,13 @@ fn bench_support_resistance(c: &mut Criterion) {
         let highs: Vec<f64> = candles.iter().map(|c| c.high).collect();
         let lows: Vec<f64> = candles.iter().map(|c| c.low).collect();
         group.throughput(Throughput::Elements(size as u64));
-        group.bench_with_input(BenchmarkId::new("support_resistance", size), &(highs, lows), |b, (h, l)| {
-            b.iter(|| get_support_resistance(black_box(h), black_box(l)));
-        });
+        group.bench_with_input(
+            BenchmarkId::new("support_resistance", size),
+            &(highs, lows),
+            |b, (h, l)| {
+                b.iter(|| get_support_resistance(black_box(h), black_box(l)));
+            },
+        );
     }
     group.finish();
 }

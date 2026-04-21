@@ -78,10 +78,13 @@ impl GlassnodeFetcher {
             .query(&[
                 ("api_key", api_key),
                 ("a", asset),
-                ("s", &chrono::Utc::now()
-                    .checked_sub_signed(chrono::Duration::days(1))
-                    .map(|d| d.format("%Y-%m-%d").to_string())
-                    .unwrap_or_default()),
+                (
+                    "s",
+                    &chrono::Utc::now()
+                        .checked_sub_signed(chrono::Duration::days(1))
+                        .map(|d| d.format("%Y-%m-%d").to_string())
+                        .unwrap_or_default(),
+                ),
             ])
             .send()
             .await?;
@@ -99,9 +102,7 @@ impl GlassnodeFetcher {
             .and_then(|entry| entry.get("v"));
 
         match last_entry {
-            Some(serde_json::Value::Number(n)) => {
-                Ok(n.as_f64().unwrap_or(0.0))
-            }
+            Some(serde_json::Value::Number(n)) => Ok(n.as_f64().unwrap_or(0.0)),
             _ => anyhow::bail!("Unexpected Glassnode response format for {}", path),
         }
     }
@@ -111,13 +112,16 @@ impl GlassnodeFetcher {
         // Use timestamp as seed for deterministic but varying data
         let seed = (timestamp / 86400) as u32;
         let pseudo_random = |offset: u32| -> f64 {
-            let x = seed.wrapping_add(offset).wrapping_mul(1103515245).wrapping_add(12345);
+            let x = seed
+                .wrapping_add(offset)
+                .wrapping_mul(1103515245)
+                .wrapping_add(12345);
             x as f64 / u32::MAX as f64
         };
 
         let mvrv = 1.0 + pseudo_random(1) * 2.0; // 1.0–3.0
-        let sopr = 0.9 + pseudo_random(2) * 0.4;  // 0.9–1.3
-        let nvt = 20.0 + pseudo_random(3) * 60.0;  // 20–80
+        let sopr = 0.9 + pseudo_random(2) * 0.4; // 0.9–1.3
+        let nvt = 20.0 + pseudo_random(3) * 60.0; // 20–80
 
         OnChainMetrics {
             symbol: "BTC".to_string(),
@@ -217,7 +221,11 @@ mod tests {
         assert!(metrics.sopr.is_some());
         assert!(metrics.nvt.is_some());
         let mvrv = metrics.mvrv.unwrap();
-        assert!(mvrv >= 1.0 && mvrv <= 3.0, "MVRV should be in [1,3], got {}", mvrv);
+        assert!(
+            mvrv >= 1.0 && mvrv <= 3.0,
+            "MVRV should be in [1,3], got {}",
+            mvrv
+        );
     }
 
     #[test]
@@ -234,7 +242,11 @@ mod tests {
         };
         let signal = GlassnodeFetcher::to_sentiment_signal(&metrics);
         assert_eq!(signal.source, "OnChain");
-        assert!(signal.value > 0.0, "Low MVRV + low SOPR should be bullish, got {}", signal.value);
+        assert!(
+            signal.value > 0.0,
+            "Low MVRV + low SOPR should be bullish, got {}",
+            signal.value
+        );
     }
 
     #[test]
@@ -250,7 +262,11 @@ mod tests {
             timestamp: 1_700_000_000,
         };
         let signal = GlassnodeFetcher::to_sentiment_signal(&metrics);
-        assert!(signal.value < 0.0, "High MVRV + high NVT should be bearish, got {}", signal.value);
+        assert!(
+            signal.value < 0.0,
+            "High MVRV + high NVT should be bearish, got {}",
+            signal.value
+        );
     }
 
     #[test]

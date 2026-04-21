@@ -97,10 +97,7 @@ mod tests {
 
     #[test]
     fn fixed_percent_basic() {
-        let sizer = PositionSizer::new(
-            SizingMethod::FixedPercent { pct: 0.02 },
-            default_config(),
-        );
+        let sizer = PositionSizer::new(SizingMethod::FixedPercent { pct: 0.02 }, default_config());
         // equity=10000, entry=100, stop=95 → risk_per_unit=5
         // size = 10000 * 0.02 / 5 = 40 units
         let size = sizer.calculate(10000.0, 100.0, 95.0);
@@ -122,19 +119,13 @@ mod tests {
 
     #[test]
     fn fixed_percent_zero_risk_returns_zero() {
-        let sizer = PositionSizer::new(
-            SizingMethod::FixedPercent { pct: 0.02 },
-            default_config(),
-        );
+        let sizer = PositionSizer::new(SizingMethod::FixedPercent { pct: 0.02 }, default_config());
         assert_eq!(sizer.calculate(10000.0, 100.0, 100.0), 0.0);
     }
 
     #[test]
     fn fixed_percent_zero_equity_returns_zero() {
-        let sizer = PositionSizer::new(
-            SizingMethod::FixedPercent { pct: 0.02 },
-            default_config(),
-        );
+        let sizer = PositionSizer::new(SizingMethod::FixedPercent { pct: 0.02 }, default_config());
         assert_eq!(sizer.calculate(0.0, 100.0, 95.0), 0.0);
     }
 
@@ -176,7 +167,12 @@ mod tests {
         // Kelly raw=80, Half raw=40 → neither capped
         let full = sizer_kelly.calculate(10000.0, 100.0, 50.0);
         let half = sizer_half.calculate(10000.0, 100.0, 50.0);
-        assert!((full - 2.0 * half).abs() < 1e-6, "full={}, half={}", full, half);
+        assert!(
+            (full - 2.0 * half).abs() < 1e-6,
+            "full={}, half={}",
+            full,
+            half
+        );
     }
 
     #[test]

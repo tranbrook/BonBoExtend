@@ -81,11 +81,7 @@ impl MarketDataFetcher {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            anyhow::bail!(
-                "Binance API returned error status {}: {}",
-                status,
-                body
-            );
+            anyhow::bail!("Binance API returned error status {}: {}", status, body);
         }
 
         let raw: serde_json::Value = response
@@ -99,10 +95,7 @@ impl MarketDataFetcher {
     /// Fetch current ticker price for a symbol.
     #[instrument(skip(self), fields(symbol = %symbol))]
     pub async fn fetch_ticker_price(&self, symbol: &str) -> Result<f64> {
-        let url = format!(
-            "{}/api/v3/ticker/price?symbol={}",
-            self.base_url, symbol
-        );
+        let url = format!("{}/api/v3/ticker/price?symbol={}", self.base_url, symbol);
 
         debug!("Fetching ticker price: {}", url);
 
@@ -226,9 +219,12 @@ fn parse_json_f64(val: &serde_json::Value, field: &str, index: usize) -> Result<
         serde_json::Value::String(s) => s
             .parse::<f64>()
             .with_context(|| format!("Failed to parse {} as f64 at index {}", field, index)),
-        serde_json::Value::Number(n) => n
-            .as_f64()
-            .with_context(|| format!("Failed to convert {} number to f64 at index {}", field, index)),
+        serde_json::Value::Number(n) => n.as_f64().with_context(|| {
+            format!(
+                "Failed to convert {} number to f64 at index {}",
+                field, index
+            )
+        }),
         _ => anyhow::bail!(
             "Unexpected type for {} at index {}: expected string or number",
             field,
@@ -318,17 +314,15 @@ mod tests {
     #[test]
     fn test_parse_klines_numeric_values() {
         // Binance usually returns strings, but test with numbers too
-        let raw = serde_json::json!([
-            [
-                1700006400000i64,
-                43000.01,
-                43500.0,
-                42800.0,
-                43200.5,
-                1234.56,
-                1700092799999i64
-            ]
-        ]);
+        let raw = serde_json::json!([[
+            1700006400000i64,
+            43000.01,
+            43500.0,
+            42800.0,
+            43200.5,
+            1234.56,
+            1700092799999i64
+        ]]);
         let candles = parse_klines_response(&raw, "ETHUSDT", "1h").unwrap();
         assert_eq!(candles.len(), 1);
         assert!((candles[0].open - 43000.01).abs() < 0.001);

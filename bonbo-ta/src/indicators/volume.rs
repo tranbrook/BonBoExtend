@@ -232,8 +232,12 @@ pub fn compute_volume_profile(
         let num_overlapped = (last_bucket - first_bucket + 1) as f64;
         let vol_per_bucket = vol / num_overlapped;
 
-        for b in first_bucket..=last_bucket {
-            bucket_volumes[b] += vol_per_bucket;
+        for bucket in bucket_volumes
+            .iter_mut()
+            .take(last_bucket + 1)
+            .skip(first_bucket)
+        {
+            *bucket += vol_per_bucket;
         }
     }
 
@@ -268,7 +272,11 @@ pub fn compute_volume_profile(
     let (va_low, va_high) = compute_value_area(&buckets, poc_idx, 0.70);
 
     // Sort buckets by volume descending for clarity
-    buckets.sort_by(|a, b| b.volume.partial_cmp(&a.volume).unwrap_or(std::cmp::Ordering::Equal));
+    buckets.sort_by(|a, b| {
+        b.volume
+            .partial_cmp(&a.volume)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     Some(VolumeProfile {
         buckets,
@@ -336,7 +344,13 @@ fn compute_value_area(buckets: &[VolumeBucket], poc_idx: usize, target_pct: f64)
     let va_low = price_sorted[low_pos].1;
     let va_high = price_sorted
         .get(high_pos)
-        .map(|(_, price, _)| *price + (buckets.first().map(|b| b.price_high - b.price_low).unwrap_or(0.0)))
+        .map(|(_, price, _)| {
+            *price
+                + (buckets
+                    .first()
+                    .map(|b| b.price_high - b.price_low)
+                    .unwrap_or(0.0))
+        })
         .unwrap_or(va_low);
 
     (va_low, va_high)
@@ -356,7 +370,11 @@ mod volume_profile_tests {
         let vp = compute_volume_profile(&highs, &lows, &closes, &volumes, 5).unwrap();
         assert!(vp.poc_price > 0.0);
         assert!(vp.value_area_high >= vp.value_area_low);
-        assert!((vp.total_volume - 5800.0).abs() < 1.0, "Total volume should be ~5800, got {}", vp.total_volume);
+        assert!(
+            (vp.total_volume - 5800.0).abs() < 1.0,
+            "Total volume should be ~5800, got {}",
+            vp.total_volume
+        );
     }
 
     #[test]
@@ -387,6 +405,10 @@ mod volume_profile_tests {
 
         let vp = compute_volume_profile(&highs, &lows, &closes, &volumes, 10).unwrap();
         let sum_pct: f64 = vp.buckets.iter().map(|b| b.volume_pct).sum();
-        assert!((sum_pct - 1.0).abs() < 0.01, "Bucket percentages should sum to 1.0, got {}", sum_pct);
+        assert!(
+            (sum_pct - 1.0).abs() < 0.01,
+            "Bucket percentages should sum to 1.0, got {}",
+            sum_pct
+        );
     }
 }

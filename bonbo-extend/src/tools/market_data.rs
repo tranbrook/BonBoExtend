@@ -1,7 +1,7 @@
 //! Market Data Tool Plugin — fetch crypto market data.
 
-use async_trait::async_trait;
 use crate::plugin::*;
+use async_trait::async_trait;
 
 /// Plugin that provides market data tools.
 pub struct MarketDataPlugin {
@@ -17,7 +17,11 @@ impl MarketDataPlugin {
                 version: env!("CARGO_PKG_VERSION").to_string(),
                 description: "Crypto market data: prices, candles, orderbook".to_string(),
                 author: "BonBo Team".to_string(),
-                tags: vec!["trading".to_string(), "market".to_string(), "crypto".to_string()],
+                tags: vec![
+                    "trading".to_string(),
+                    "market".to_string(),
+                    "crypto".to_string(),
+                ],
             },
         }
     }
@@ -131,39 +135,26 @@ impl ToolPlugin for MarketDataPlugin {
     ) -> anyhow::Result<String> {
         match tool_name {
             "get_crypto_price" => {
-                let symbol = arguments["symbol"]
-                    .as_str()
-                    .unwrap_or("BTCUSDT");
+                let symbol = arguments["symbol"].as_str().unwrap_or("BTCUSDT");
                 fetch_ticker(symbol).await
             }
             "get_crypto_candles" => {
                 let symbol = arguments["symbol"]
                     .as_str()
                     .ok_or_else(|| anyhow::anyhow!("symbol is required"))?;
-                let interval = arguments["interval"]
-                    .as_str()
-                    .unwrap_or("1h");
-                let limit = arguments["limit"]
-                    .as_u64()
-                    .unwrap_or(24)
-                    .min(100) as u32;
+                let interval = arguments["interval"].as_str().unwrap_or("1h");
+                let limit = arguments["limit"].as_u64().unwrap_or(24).min(100) as u32;
                 fetch_klines(symbol, interval, limit).await
             }
             "get_crypto_orderbook" => {
                 let symbol = arguments["symbol"]
                     .as_str()
                     .ok_or_else(|| anyhow::anyhow!("symbol is required"))?;
-                let limit = arguments["limit"]
-                    .as_u64()
-                    .unwrap_or(10)
-                    .min(20) as u32;
+                let limit = arguments["limit"].as_u64().unwrap_or(10).min(20) as u32;
                 fetch_orderbook(symbol, limit).await
             }
             "get_top_crypto" => {
-                let limit = arguments["limit"]
-                    .as_u64()
-                    .unwrap_or(10)
-                    .min(50) as u32;
+                let limit = arguments["limit"].as_u64().unwrap_or(10).min(50) as u32;
                 fetch_top_volume(limit).await
             }
             _ => Err(anyhow::anyhow!("Unknown tool: {}", tool_name)),
@@ -195,17 +186,27 @@ async fn fetch_ticker(symbol: &str) -> anyhow::Result<String> {
     let volume = data["volume"].as_str().unwrap_or("N/A");
     let quote_vol = data["quoteVolume"].as_str().unwrap_or("N/A");
 
-    let emoji = if change_pct.parse::<f64>().unwrap_or(0.0) >= 0.0 { "📈" } else { "📉" };
+    let emoji = if change_pct.parse::<f64>().unwrap_or(0.0) >= 0.0 {
+        "📈"
+    } else {
+        "📉"
+    };
 
     Ok(format!(
         "{} **{}** Price: ${}\n\
          {} 24h Change: {}%\n\
          📊 High: ${} | Low: ${}\n\
          📦 Volume: {} {} | ${}",
-        emoji, symbol, last_price,
-        emoji, change_pct,
-        high, low,
-        volume, symbol.strip_suffix("USDT").unwrap_or(symbol), quote_vol
+        emoji,
+        symbol,
+        last_price,
+        emoji,
+        change_pct,
+        high,
+        low,
+        volume,
+        symbol.strip_suffix("USDT").unwrap_or(symbol),
+        quote_vol
     ))
 }
 
@@ -213,7 +214,9 @@ async fn fetch_ticker(symbol: &str) -> anyhow::Result<String> {
 async fn fetch_klines(symbol: &str, interval: &str, limit: u32) -> anyhow::Result<String> {
     let url = format!(
         "https://api.binance.com/api/v3/klines?symbol={}&interval={}&limit={}",
-        symbol.to_uppercase(), interval, limit
+        symbol.to_uppercase(),
+        interval,
+        limit
     );
     let client = reqwest::Client::new();
     let resp = client.get(&url).send().await?;
@@ -223,14 +226,19 @@ async fn fetch_klines(symbol: &str, interval: &str, limit: u32) -> anyhow::Resul
     }
 
     let candles: Vec<serde_json::Value> = resp.json().await?;
-    let mut lines = vec![format!("📊 **{} Candles** ({} interval, last {} candles)\n", symbol, interval, limit)];
+    let mut lines = vec![format!(
+        "📊 **{} Candles** ({} interval, last {} candles)\n",
+        symbol, interval, limit
+    )];
     lines.push("| Time | Open | High | Low | Close | Volume |".to_string());
     lines.push("|------|------|------|-----|-------|--------|".to_string());
 
     for candle in candles.iter().take(limit as usize) {
         let empty = vec![];
         let arr = candle.as_array().unwrap_or(&empty);
-        if arr.len() < 6 { continue; }
+        if arr.len() < 6 {
+            continue;
+        }
         let open_time = arr[0].as_u64().unwrap_or(0);
         let time = chrono::DateTime::from_timestamp_millis(open_time as i64)
             .map(|t| t.format("%m-%d %H:%M").to_string())
@@ -259,7 +267,8 @@ async fn fetch_klines(symbol: &str, interval: &str, limit: u32) -> anyhow::Resul
 async fn fetch_orderbook(symbol: &str, limit: u32) -> anyhow::Result<String> {
     let url = format!(
         "https://api.binance.com/api/v3/depth?symbol={}&limit={}",
-        symbol.to_uppercase(), limit
+        symbol.to_uppercase(),
+        limit
     );
     let client = reqwest::Client::new();
     let resp = client.get(&url).send().await?;
@@ -315,14 +324,25 @@ async fn fetch_top_volume(limit: u32) -> anyhow::Result<String> {
     let mut usdt_pairs: Vec<&serde_json::Value> = tickers
         .iter()
         .filter(|t| {
-            t["symbol"].as_str().map(|s| s.ends_with("USDT")).unwrap_or(false)
+            t["symbol"]
+                .as_str()
+                .map(|s| s.ends_with("USDT"))
+                .unwrap_or(false)
         })
         .collect();
 
     usdt_pairs.sort_by(|a, b| {
-        let vol_a = a["quoteVolume"].as_str().and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
-        let vol_b = b["quoteVolume"].as_str().and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
-        vol_b.partial_cmp(&vol_a).unwrap_or(std::cmp::Ordering::Equal)
+        let vol_a = a["quoteVolume"]
+            .as_str()
+            .and_then(|v| v.parse::<f64>().ok())
+            .unwrap_or(0.0);
+        let vol_b = b["quoteVolume"]
+            .as_str()
+            .and_then(|v| v.parse::<f64>().ok())
+            .unwrap_or(0.0);
+        vol_b
+            .partial_cmp(&vol_a)
+            .unwrap_or(std::cmp::Ordering::Equal)
     });
 
     let mut lines = vec![format!("🏆 **Top {} Crypto by Volume**\n", limit)];
@@ -334,11 +354,20 @@ async fn fetch_top_volume(limit: u32) -> anyhow::Result<String> {
         let price = ticker["lastPrice"].as_str().unwrap_or("?");
         let change = ticker["priceChangePercent"].as_str().unwrap_or("?");
         let vol = ticker["quoteVolume"].as_str().unwrap_or("?");
-        let emoji = if change.parse::<f64>().unwrap_or(0.0) >= 0.0 { "📈" } else { "📉" };
+        let emoji = if change.parse::<f64>().unwrap_or(0.0) >= 0.0 {
+            "📈"
+        } else {
+            "📉"
+        };
 
         lines.push(format!(
             "| {} | {} | ${} | {}{} | ${} |",
-            i + 1, symbol, price, emoji, change, vol
+            i + 1,
+            symbol,
+            price,
+            emoji,
+            change,
+            vol
         ));
     }
 

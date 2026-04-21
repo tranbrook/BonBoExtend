@@ -56,13 +56,19 @@ impl Adx {
                 let up_move = high - ph;
                 let down_move = pl - low;
 
-                let plus_dm = if up_move > down_move && up_move > 0.0 { up_move } else { 0.0 };
-                let minus_dm = if down_move > up_move && down_move > 0.0 { down_move } else { 0.0 };
+                let plus_dm = if up_move > down_move && up_move > 0.0 {
+                    up_move
+                } else {
+                    0.0
+                };
+                let minus_dm = if down_move > up_move && down_move > 0.0 {
+                    down_move
+                } else {
+                    0.0
+                };
 
                 // True Range
-                let tr = (high - low)
-                    .max((high - pc).abs())
-                    .max((low - pc).abs());
+                let tr = (high - low).max((high - pc).abs()).max((low - pc).abs());
 
                 self.count += 1;
 
@@ -89,15 +95,21 @@ impl Adx {
                             0.0
                         };
                         self.adx_sum = dx;
-                        Some(AdxResult { plus_di, minus_di, adx: dx })
+                        Some(AdxResult {
+                            plus_di,
+                            minus_di,
+                            adx: dx,
+                        })
                     } else {
                         None
                     }
                 } else {
                     // Wilder's smoothing
                     let n = self.period as f64;
-                    self.smoothed_plus_dm = self.smoothed_plus_dm - (self.smoothed_plus_dm / n) + plus_dm;
-                    self.smoothed_minus_dm = self.smoothed_minus_dm - (self.smoothed_minus_dm / n) + minus_dm;
+                    self.smoothed_plus_dm =
+                        self.smoothed_plus_dm - (self.smoothed_plus_dm / n) + plus_dm;
+                    self.smoothed_minus_dm =
+                        self.smoothed_minus_dm - (self.smoothed_minus_dm / n) + minus_dm;
                     self.smoothed_tr = self.smoothed_tr - (self.smoothed_tr / n) + tr;
 
                     let plus_di = if self.smoothed_tr != 0.0 {
@@ -123,7 +135,11 @@ impl Adx {
                     };
                     self.adx = Some(adx);
 
-                    Some(AdxResult { plus_di, minus_di, adx })
+                    Some(AdxResult {
+                        plus_di,
+                        minus_di,
+                        adx,
+                    })
                 }
             }
             _ => None,
@@ -150,7 +166,11 @@ mod tests {
         }
         // ADX should be high in trending market
         let result = adx.next_hlc(165.0, 158.0, 162.0).unwrap();
-        assert!(result.adx > 20.0, "ADX should indicate trending: got {}", result.adx);
+        assert!(
+            result.adx > 20.0,
+            "ADX should indicate trending: got {}",
+            result.adx
+        );
     }
 
     #[test]
@@ -162,6 +182,10 @@ mod tests {
             adx.next_hlc(base + 1.0, base - 1.0, base);
         }
         let result = adx.next_hlc(103.0, 101.0, 102.0).unwrap();
-        assert!(result.adx < 50.0, "ADX should be low in ranging: got {}", result.adx);
+        assert!(
+            result.adx < 50.0,
+            "ADX should be low in ranging: got {}",
+            result.adx
+        );
     }
 }

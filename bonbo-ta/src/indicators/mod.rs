@@ -8,17 +8,23 @@
 //!
 //! This is the #1 source of numerical discrepancy across TA libraries.
 
+mod alma;
+mod ehlers;
+mod hurst;
 mod moving_averages;
 mod oscillators;
+mod trend;
 mod volatility;
 mod volume;
-mod trend;
 
-pub use moving_averages::{Sma, Ema};
-pub use oscillators::{Rsi, Macd, MacdResult, Stochastic, StochasticResult, Cci};
-pub use volatility::{BollingerBands, BollingerBandsResult, Atr};
-pub use volume::{Vwap, Obv, VolumeProfile, VolumeBucket, compute_volume_profile};
+pub use alma::Alma;
+pub use ehlers::{Cmo, LaguerreRsi, RoofingFilter, SuperSmoother};
+pub use hurst::{HurstExponent, MarketCharacter};
+pub use moving_averages::{Ema, Sma};
+pub use oscillators::{Cci, Macd, MacdResult, Rsi, Stochastic, StochasticResult};
 pub use trend::{Adx, AdxResult};
+pub use volatility::{Atr, BollingerBands, BollingerBandsResult};
+pub use volume::{Obv, VolumeBucket, VolumeProfile, Vwap, compute_volume_profile};
 
 // Re-export from parent for convenience
 pub use crate::IncrementalIndicator;

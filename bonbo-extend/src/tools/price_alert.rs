@@ -1,7 +1,7 @@
 //! Price Alert Plugin — create and manage price alerts for crypto.
 
-use async_trait::async_trait;
 use crate::plugin::*;
+use async_trait::async_trait;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -144,7 +144,8 @@ impl ToolPlugin for PriceAlertPlugin {
 
                 let summary = format!(
                     "✅ Alert #{}: {} {} ${:.2}",
-                    alert.id, alert.symbol,
+                    alert.id,
+                    alert.symbol,
                     match &alert.direction {
                         AlertDirection::Above => "goes ABOVE",
                         AlertDirection::Below => "goes BELOW",
@@ -166,10 +167,16 @@ impl ToolPlugin for PriceAlertPlugin {
                         AlertDirection::Above => "📈",
                         AlertDirection::Below => "📉",
                     };
-                    let status = if alert.triggered { "🔔 TRIGGERED" } else { "⏳ Active" };
+                    let status = if alert.triggered {
+                        "🔔 TRIGGERED"
+                    } else {
+                        "⏳ Active"
+                    };
                     lines.push(format!(
                         "- #{} {} {} ${:.2} — {} — {}",
-                        alert.id, dir_emoji, alert.symbol,
+                        alert.id,
+                        dir_emoji,
+                        alert.symbol,
                         alert.target_price,
                         match &alert.direction {
                             AlertDirection::Above => "above",

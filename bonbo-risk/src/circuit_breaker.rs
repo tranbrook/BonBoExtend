@@ -45,11 +45,7 @@ impl CircuitBreaker {
         let consecutive_level = self.check_consecutive_losses(portfolio);
 
         // Return the most restrictive level
-        most_restrictive(&[
-            drawdown_level,
-            daily_level,
-            consecutive_level,
-        ])
+        most_restrictive(&[drawdown_level, daily_level, consecutive_level])
     }
 
     /// Check daily loss limits.
@@ -93,7 +89,10 @@ impl CircuitBreaker {
             },
             CircuitBreakerLevel::Reduced(pct) => RiskCheckResult {
                 allowed: true,
-                reason: format!("Risk limit breached — position size reduced to {:.0}%", pct * 100.0),
+                reason: format!(
+                    "Risk limit breached — position size reduced to {:.0}%",
+                    pct * 100.0
+                ),
                 adjusted_size: Some(pct),
             },
             CircuitBreakerLevel::Paused => RiskCheckResult {

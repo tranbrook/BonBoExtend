@@ -49,7 +49,8 @@ impl RegimeClassifier {
 
         let recent = &returns[returns.len() - self.config.lookback..];
         let mean: f64 = recent.iter().sum::<f64>() / recent.len() as f64;
-        let variance: f64 = recent.iter().map(|r| (r - mean).powi(2)).sum::<f64>() / recent.len() as f64;
+        let variance: f64 =
+            recent.iter().map(|r| (r - mean).powi(2)).sum::<f64>() / recent.len() as f64;
         let volatility = variance.sqrt();
 
         if volatility > self.config.volatile_threshold {
@@ -67,9 +68,7 @@ impl RegimeClassifier {
 
     /// Detect regime from OHLCV candles (using close-to-close returns).
     pub fn detect_from_closes(&mut self, closes: &[f64], timestamp: i64) -> RegimeState {
-        let returns: Vec<f64> = closes.windows(2)
-            .map(|w| (w[1] - w[0]) / w[0])
-            .collect();
+        let returns: Vec<f64> = closes.windows(2).map(|w| (w[1] - w[0]) / w[0]).collect();
         self.detect(&returns, timestamp)
     }
 
@@ -94,7 +93,10 @@ mod tests {
         // Small consistent returns → Ranging or Quiet
         let returns: Vec<f64> = (0..50).map(|i| 0.001 * (i as f64 * 0.1).sin()).collect();
         let state = classifier.detect(&returns, 1000);
-        assert!(matches!(state.current_regime, MarketRegime::Ranging | MarketRegime::Quiet));
+        assert!(matches!(
+            state.current_regime,
+            MarketRegime::Ranging | MarketRegime::Quiet
+        ));
     }
 
     #[test]
@@ -103,7 +105,9 @@ mod tests {
         let mut classifier = RegimeClassifier::new(config);
 
         // Large alternating returns → high volatility regime (Volatile or with BOCPD influence)
-        let returns: Vec<f64> = (0..50).map(|i| if i % 2 == 0 { 0.05 } else { -0.04 }).collect();
+        let returns: Vec<f64> = (0..50)
+            .map(|i| if i % 2 == 0 { 0.05 } else { -0.04 })
+            .collect();
         let state = classifier.detect(&returns, 1000);
         // Accept any high-volatility classification (BOCPD may classify differently)
         assert!(!matches!(state.current_regime, MarketRegime::Quiet));
@@ -116,6 +120,9 @@ mod tests {
 
         let closes: Vec<f64> = (0..50).map(|i| 50_000.0 + i as f64 * 10.0).collect();
         let state = classifier.detect_from_closes(&closes, 1000);
-        assert!(matches!(state.current_regime, MarketRegime::TrendingUp | MarketRegime::Ranging));
+        assert!(matches!(
+            state.current_regime,
+            MarketRegime::TrendingUp | MarketRegime::Ranging
+        ));
     }
 }

@@ -8,6 +8,12 @@ pub struct ScanScheduler {
     scans: Vec<ScheduledScan>,
 }
 
+impl Default for ScanScheduler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ScanScheduler {
     pub fn new() -> Self {
         let mut scheduler = Self { scans: Vec::new() };
@@ -60,7 +66,8 @@ impl ScanScheduler {
     /// Get scans that are due for execution.
     pub fn get_due_scans(&self) -> Vec<&ScheduledScan> {
         let now = chrono::Utc::now().timestamp();
-        self.scans.iter()
+        self.scans
+            .iter()
             .filter(|s| s.enabled)
             .filter(|s| {
                 match s.next_run {
@@ -74,7 +81,9 @@ impl ScanScheduler {
     /// Mark a scan as completed and schedule next run.
     pub fn mark_completed(&mut self, scan_id: &str) -> Result<(), ScannerError> {
         let now = chrono::Utc::now().timestamp();
-        let scan = self.scans.iter_mut()
+        let scan = self
+            .scans
+            .iter_mut()
             .find(|s| s.id == scan_id)
             .ok_or_else(|| ScannerError::Schedule(format!("Scan not found: {}", scan_id)))?;
 
@@ -90,7 +99,9 @@ impl ScanScheduler {
 
     /// Toggle a scan on/off.
     pub fn toggle_scan(&mut self, scan_id: &str, enabled: bool) -> Result<(), ScannerError> {
-        let scan = self.scans.iter_mut()
+        let scan = self
+            .scans
+            .iter_mut()
             .find(|s| s.id == scan_id)
             .ok_or_else(|| ScannerError::Schedule(format!("Scan not found: {}", scan_id)))?;
         scan.enabled = enabled;
@@ -122,7 +133,11 @@ mod tests {
     fn test_scheduler_mark_completed() {
         let mut scheduler = ScanScheduler::new();
         scheduler.mark_completed("market_scan_4h").unwrap();
-        let scan = scheduler.list_scans().iter().find(|s| s.id == "market_scan_4h").unwrap();
+        let scan = scheduler
+            .list_scans()
+            .iter()
+            .find(|s| s.id == "market_scan_4h")
+            .unwrap();
         assert!(scan.last_run.is_some());
         assert!(scan.next_run.is_some());
         // Should not be due anymore

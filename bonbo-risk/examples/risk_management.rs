@@ -4,7 +4,7 @@
 //! cargo run --example risk_management
 //! ```
 
-use bonbo_risk::circuit_breaker::{CircuitBreaker, CircuitBreakerLevel};
+use bonbo_risk::circuit_breaker::CircuitBreaker;
 use bonbo_risk::models::{PortfolioState, RiskConfig};
 use bonbo_risk::position_sizing::{PositionSizer, SizingMethod};
 use bonbo_risk::var;
@@ -17,7 +17,10 @@ fn main() {
     let entry = 42_000.0;
     let stop_loss = 40_000.0;
 
-    println!("📈 Position Sizing (equity=${:.0}, entry=${:.0}, stop=${:.0})\n", equity, entry, stop_loss);
+    println!(
+        "📈 Position Sizing (equity=${:.0}, entry=${:.0}, stop=${:.0})\n",
+        equity, entry, stop_loss
+    );
 
     // Fixed percent
     let config = RiskConfig::default();
@@ -26,16 +29,26 @@ fn main() {
     println!("  Fixed 2%:   {:.6} BTC (${:.2})", size, size * entry);
 
     // Kelly Criterion
-    let sizer = PositionSizer::new(SizingMethod::Kelly {
-        win_rate: 0.55, avg_win: 500.0, avg_loss: 250.0,
-    }, config.clone());
+    let sizer = PositionSizer::new(
+        SizingMethod::Kelly {
+            win_rate: 0.55,
+            avg_win: 500.0,
+            avg_loss: 250.0,
+        },
+        config.clone(),
+    );
     let size = sizer.calculate(equity, entry, stop_loss);
     println!("  Kelly:      {:.6} BTC (${:.2})", size, size * entry);
 
     // Half Kelly
-    let sizer = PositionSizer::new(SizingMethod::HalfKelly {
-        win_rate: 0.55, avg_win: 500.0, avg_loss: 250.0,
-    }, config);
+    let sizer = PositionSizer::new(
+        SizingMethod::HalfKelly {
+            win_rate: 0.55,
+            avg_win: 500.0,
+            avg_loss: 250.0,
+        },
+        config,
+    );
     let size = sizer.calculate(equity, entry, stop_loss);
     println!("  Half Kelly: {:.6} BTC (${:.2})", size, size * entry);
 
@@ -59,7 +72,10 @@ fn main() {
     };
     let level = cb.check(&portfolio);
     let check = cb.can_trade(&portfolio);
-    println!("  Normal:      level={:?}, can_trade={}, reason={}", level, check.allowed, check.reason);
+    println!(
+        "  Normal:      level={:?}, can_trade={}, reason={}",
+        level, check.allowed, check.reason
+    );
 
     // Soft stop (daily loss > 2%)
     let portfolio = PortfolioState {
@@ -70,7 +86,10 @@ fn main() {
     };
     let level = cb.check(&portfolio);
     let check = cb.can_trade(&portfolio);
-    println!("  Soft stop:   level={:?}, can_trade={}, reason={}", level, check.allowed, check.reason);
+    println!(
+        "  Soft stop:   level={:?}, can_trade={}, reason={}",
+        level, check.allowed, check.reason
+    );
 
     // Hard stop (daily loss > 5%)
     let portfolio = PortfolioState {
@@ -81,13 +100,21 @@ fn main() {
     };
     let level = cb.check(&portfolio);
     let check = cb.can_trade(&portfolio);
-    println!("  Hard stop:   level={:?}, can_trade={}, reason={}", level, check.allowed, check.reason);
+    println!(
+        "  Hard stop:   level={:?}, can_trade={}, reason={}",
+        level, check.allowed, check.reason
+    );
 
     // ─── VaR / CVaR ──────────────────────────────────────
     println!("\n📉 Risk Metrics");
 
-    let trade_pnls = vec![150.0, -80.0, 200.0, -120.0, 50.0, -30.0, 300.0, -60.0, 100.0, -40.0];
-    let equity_curve = vec![10000.0, 10150.0, 10070.0, 10270.0, 10150.0, 10200.0, 10170.0, 10470.0, 10410.0, 10510.0, 10470.0];
+    let trade_pnls = vec![
+        150.0, -80.0, 200.0, -120.0, 50.0, -30.0, 300.0, -60.0, 100.0, -40.0,
+    ];
+    let equity_curve = vec![
+        10000.0, 10150.0, 10070.0, 10270.0, 10150.0, 10200.0, 10170.0, 10470.0, 10410.0, 10510.0,
+        10470.0,
+    ];
 
     let metrics = var::compute_portfolio_metrics(&trade_pnls, &equity_curve, 10_000.0);
     println!("  Return:      {:.2}%", metrics.total_return_pct * 100.0);

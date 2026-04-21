@@ -23,21 +23,43 @@ pub struct BacktestReport {
 }
 
 impl BacktestReport {
-    pub fn generate(trades: Vec<Trade>, initial_capital: f64, equity_curve: Vec<f64>) -> Result<Self> {
+    pub fn generate(
+        trades: Vec<Trade>,
+        initial_capital: f64,
+        equity_curve: Vec<f64>,
+    ) -> Result<Self> {
         let total_trades = trades.len();
         let winners: Vec<&Trade> = trades.iter().filter(|t| t.pnl > 0.0).collect();
         let losers: Vec<&Trade> = trades.iter().filter(|t| t.pnl <= 0.0).collect();
 
         let winning_trades = winners.len();
         let losing_trades = losers.len();
-        let win_rate = if total_trades > 0 { winning_trades as f64 / total_trades as f64 } else { 0.0 };
+        let win_rate = if total_trades > 0 {
+            winning_trades as f64 / total_trades as f64
+        } else {
+            0.0
+        };
 
-        let avg_win_pct = if !winners.is_empty() { winners.iter().map(|t| t.pnl_percent).sum::<f64>() / winners.len() as f64 } else { 0.0 };
-        let avg_loss_pct = if !losers.is_empty() { losers.iter().map(|t| t.pnl_percent).sum::<f64>() / losers.len() as f64 } else { 0.0 };
+        let avg_win_pct = if !winners.is_empty() {
+            winners.iter().map(|t| t.pnl_percent).sum::<f64>() / winners.len() as f64
+        } else {
+            0.0
+        };
+        let avg_loss_pct = if !losers.is_empty() {
+            losers.iter().map(|t| t.pnl_percent).sum::<f64>() / losers.len() as f64
+        } else {
+            0.0
+        };
 
         let gross_profit: f64 = winners.iter().map(|t| t.pnl).sum();
         let gross_loss: f64 = losers.iter().map(|t| t.pnl.abs()).sum();
-        let profit_factor = if gross_loss > 0.0 { gross_profit / gross_loss } else { if gross_profit > 0.0 { f64::INFINITY } else { 0.0 } };
+        let profit_factor = if gross_loss > 0.0 {
+            gross_profit / gross_loss
+        } else if gross_profit > 0.0 {
+            f64::INFINITY
+        } else {
+            0.0
+        };
 
         let final_equity = equity_curve.last().copied().unwrap_or(initial_capital);
         let total_return_pct = (final_equity - initial_capital) / initial_capital * 100.0;
@@ -46,9 +68,13 @@ impl BacktestReport {
         let mut peak = initial_capital;
         let mut max_dd = 0.0;
         for &eq in &equity_curve {
-            if eq > peak { peak = eq; }
+            if eq > peak {
+                peak = eq;
+            }
             let dd = (peak - eq) / peak;
-            if dd > max_dd { max_dd = dd; }
+            if dd > max_dd {
+                max_dd = dd;
+            }
         }
 
         // Sharpe / Sortino from equity curve
@@ -59,21 +85,42 @@ impl BacktestReport {
             }
         }
 
-        let mean_ret = if !returns.is_empty() { returns.iter().sum::<f64>() / returns.len() as f64 } else { 0.0 };
+        let mean_ret = if !returns.is_empty() {
+            returns.iter().sum::<f64>() / returns.len() as f64
+        } else {
+            0.0
+        };
         let std_ret = if returns.len() > 1 {
-            let variance = returns.iter().map(|r| (r - mean_ret).powi(2)).sum::<f64>() / (returns.len() - 1) as f64;
+            let variance = returns.iter().map(|r| (r - mean_ret).powi(2)).sum::<f64>()
+                / (returns.len() - 1) as f64;
             variance.sqrt()
-        } else { 0.0 };
+        } else {
+            0.0
+        };
 
         let neg_returns: Vec<f64> = returns.iter().filter(|&&r| r < 0.0).copied().collect();
         let std_neg = if neg_returns.len() > 1 {
             let neg_mean = neg_returns.iter().sum::<f64>() / neg_returns.len() as f64;
-            let var = neg_returns.iter().map(|r| (r - neg_mean).powi(2)).sum::<f64>() / (neg_returns.len() - 1) as f64;
+            let var = neg_returns
+                .iter()
+                .map(|r| (r - neg_mean).powi(2))
+                .sum::<f64>()
+                / (neg_returns.len() - 1) as f64;
             var.sqrt()
-        } else { std_ret };
+        } else {
+            std_ret
+        };
 
-        let sharpe_ratio = if std_ret > 0.0 { (252.0_f64.sqrt() * mean_ret) / std_ret } else { 0.0 };
-        let sortino_ratio = if std_neg > 0.0 { (252.0_f64.sqrt() * mean_ret) / std_neg } else { 0.0 };
+        let sharpe_ratio = if std_ret > 0.0 {
+            (252.0_f64.sqrt() * mean_ret) / std_ret
+        } else {
+            0.0
+        };
+        let sortino_ratio = if std_neg > 0.0 {
+            (252.0_f64.sqrt() * mean_ret) / std_neg
+        } else {
+            0.0
+        };
 
         Ok(Self {
             total_return_pct,
@@ -97,14 +144,27 @@ impl BacktestReport {
     pub fn format_report(&self) -> String {
         let mut r = String::new();
         r.push_str("📊 **Backtest Results**\n\n");
-        r.push_str(&format!("💰 **Initial Capital**: ${:.2}\n", self.initial_capital));
+        r.push_str(&format!(
+            "💰 **Initial Capital**: ${:.2}\n",
+            self.initial_capital
+        ));
         r.push_str(&format!("💰 **Final Equity**: ${:.2}\n", self.final_equity));
-        r.push_str(&format!("📈 **Total Return**: {:.2}%\n\n", self.total_return_pct));
+        r.push_str(&format!(
+            "📈 **Total Return**: {:.2}%\n\n",
+            self.total_return_pct
+        ));
         r.push_str("**Trade Statistics:**\n");
         r.push_str(&format!("  Total Trades: {}\n", self.total_trades));
-        r.push_str(&format!("  Winning: {} | Losing: {}\n", self.winning_trades, self.losing_trades));
+        r.push_str(&format!(
+            "  Winning: {} | Losing: {}\n",
+            self.winning_trades, self.losing_trades
+        ));
         r.push_str(&format!("  Win Rate: {:.1}%\n", self.win_rate * 100.0));
-        r.push_str(&format!("  Avg Win: {:.2}% | Avg Loss: {:.2}%\n", self.avg_win_pct * 100.0, self.avg_loss_pct * 100.0));
+        r.push_str(&format!(
+            "  Avg Win: {:.2}% | Avg Loss: {:.2}%\n",
+            self.avg_win_pct * 100.0,
+            self.avg_loss_pct * 100.0
+        ));
         r.push_str(&format!("  Profit Factor: {:.2}\n\n", self.profit_factor));
         r.push_str("**Risk Metrics:**\n");
         r.push_str(&format!("  Sharpe Ratio: {:.2}\n", self.sharpe_ratio));
@@ -116,11 +176,87 @@ impl BacktestReport {
             r.push_str("\n**Recent Trades:**\n");
             for trade in self.trades.iter().rev().take(5) {
                 let icon = if trade.pnl > 0.0 { "🟢" } else { "🔴" };
-                r.push_str(&format!("{} Entry: ${:.2} → Exit: ${:.2} | P&L: ${:.2} ({:.2}%)\n",
-                    icon, trade.entry_price, trade.exit_price, trade.pnl, trade.pnl_percent * 100.0));
+                r.push_str(&format!(
+                    "{} Entry: ${:.2} → Exit: ${:.2} | P&L: ${:.2} ({:.2}%)\n",
+                    icon,
+                    trade.entry_price,
+                    trade.exit_price,
+                    trade.pnl,
+                    trade.pnl_percent * 100.0
+                ));
             }
         }
 
         r
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{Trade, TradeSide};
+
+    fn make_trade(pnl: f64, pnl_percent: f64) -> Trade {
+        Trade {
+            id: "t1".into(),
+            symbol: "BTCUSDT".into(),
+            side: TradeSide::Long,
+            entry_price: 50000.0,
+            exit_price: 55000.0,
+            quantity: 0.1,
+            entry_time: 0,
+            exit_time: 1,
+            pnl,
+            pnl_percent,
+            fee: 1.0,
+        }
+    }
+
+    #[test]
+    fn test_report_all_winners() {
+        let trades = vec![make_trade(100.0, 0.1), make_trade(200.0, 0.2)];
+        let report =
+            BacktestReport::generate(trades, 10000.0, vec![10000.0, 10100.0, 10300.0]).unwrap();
+        assert_eq!(report.total_trades, 2);
+        assert_eq!(report.winning_trades, 2);
+        assert_eq!(report.losing_trades, 0);
+        assert!((report.win_rate - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_report_all_losers() {
+        let trades = vec![make_trade(-50.0, -0.05), make_trade(-100.0, -0.1)];
+        let report =
+            BacktestReport::generate(trades, 10000.0, vec![10000.0, 9950.0, 9850.0]).unwrap();
+        assert_eq!(report.total_trades, 2);
+        assert_eq!(report.winning_trades, 0);
+        assert_eq!(report.losing_trades, 2);
+        assert!((report.win_rate - 0.0).abs() < f64::EPSILON);
+        assert!(report.profit_factor < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_report_no_trades() {
+        let report = BacktestReport::generate(vec![], 10000.0, vec![10000.0]).unwrap();
+        assert_eq!(report.total_trades, 0);
+        assert!((report.win_rate - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_report_max_drawdown() {
+        // Equity curve with 20% drawdown: peak at 12000, trough at 9600
+        let equity = vec![10000.0, 11000.0, 12000.0, 10500.0, 9600.0, 10000.0];
+        let report = BacktestReport::generate(vec![], 10000.0, equity).unwrap();
+        // Max DD = (12000 - 9600) / 12000 = 20%
+        assert!((report.max_drawdown_pct - 20.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn test_report_format() {
+        let trades = vec![make_trade(100.0, 0.1)];
+        let report = BacktestReport::generate(trades, 10000.0, vec![10000.0, 10100.0]).unwrap();
+        let formatted = report.format_report();
+        assert!(formatted.contains("Backtest Results"));
+        assert!(formatted.contains("Total Trades: 1"));
     }
 }

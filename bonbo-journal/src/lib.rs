@@ -4,11 +4,11 @@
 //! Records every analysis snapshot and trade outcome for self-learning.
 
 pub mod error;
-pub mod models;
 pub mod journal;
+pub mod models;
 pub mod performance;
 
 pub use error::JournalError;
-pub use models::*;
 pub use journal::JournalStore;
+pub use models::*;
 pub use performance::PerformanceTracker;

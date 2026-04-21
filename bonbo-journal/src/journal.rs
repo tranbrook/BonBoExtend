@@ -3,7 +3,7 @@
 use crate::error::JournalError;
 use crate::models::*;
 use anyhow::Result;
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use std::path::Path;
 use tracing::{debug, info};
 
@@ -67,7 +67,7 @@ impl JournalStore {
         let outcome_json = entry
             .outcome
             .as_ref()
-            .map(|o| serde_json::to_string(o))
+            .map(serde_json::to_string)
             .transpose()?;
 
         self.conn.execute(
@@ -87,12 +87,19 @@ impl JournalStore {
                 outcome_json,
             ],
         )?;
-        debug!("Inserted journal entry: {} for {}", entry.id, entry.snapshot.symbol);
+        debug!(
+            "Inserted journal entry: {} for {}",
+            entry.id, entry.snapshot.symbol
+        );
         Ok(())
     }
 
     /// Record outcome for an existing trade entry.
-    pub fn record_outcome(&self, entry_id: &str, outcome: &TradeOutcome) -> Result<(), JournalError> {
+    pub fn record_outcome(
+        &self,
+        entry_id: &str,
+        outcome: &TradeOutcome,
+    ) -> Result<(), JournalError> {
         // Check existing
         let existing: Option<String> = self
             .conn
@@ -103,9 +110,8 @@ impl JournalStore {
             )
             .ok();
 
-        match existing {
-            Some(_) => return Err(JournalError::OutcomeAlreadyExists(entry_id.to_string())),
-            None => {} // OK, no outcome yet
+        if existing.is_some() {
+            return Err(JournalError::OutcomeAlreadyExists(entry_id.to_string()));
         }
 
         let outcome_json = serde_json::to_string(outcome)?;
@@ -118,7 +124,10 @@ impl JournalStore {
     }
 
     /// Query journal entries with filters.
-    pub fn query_entries(&self, query: &JournalQuery) -> Result<Vec<TradeJournalEntry>, JournalError> {
+    pub fn query_entries(
+        &self,
+        query: &JournalQuery,
+    ) -> Result<Vec<TradeJournalEntry>, JournalError> {
         let mut sql = String::from(
             "SELECT id, timestamp, symbol, recommendation, entry_price, stop_loss, target_price, risk_reward_ratio, position_size_usd, snapshot_json, outcome_json FROM journal_entries WHERE 1=1",
         );
@@ -151,7 +160,8 @@ impl JournalStore {
             sql.push_str(&format!(" OFFSET {}", offset));
         }
 
-        let params: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
+        let params: Vec<&dyn rusqlite::types::ToSql> =
+            param_values.iter().map(|p| p.as_ref()).collect();
 
         let mut stmt = self.conn.prepare(&sql)?;
         let entries: Vec<TradeJournalEntry> = stmt
@@ -167,32 +177,58 @@ impl JournalStore {
                 let position_size_usd: f64 = row.get(8)?;
                 let snapshot_json: String = row.get(9)?;
                 let outcome_json: Option<String> = row.get(10)?;
-                Ok((id, timestamp, symbol, recommendation_str, entry_price, stop_loss, target_price, risk_reward_ratio, position_size_usd, snapshot_json, outcome_json))
-            })?
-            .filter_map(|r| r.ok())
-            .filter_map(|(id, timestamp, _symbol, rec_str, entry_price, stop_loss, target_price, rr, pos_usd, snap_json, out_json)| {
-                let snapshot: AnalysisSnapshot = serde_json::from_str(&snap_json).ok()?;
-                let outcome = out_json.and_then(|j| serde_json::from_str(&j).ok());
-                let recommendation = match rec_str.as_str() {
-                    "STRONG_BUY" => Recommendation::StrongBuy,
-                    "BUY" => Recommendation::Buy,
-                    "SELL" => Recommendation::Sell,
-                    "STRONG_SELL" => Recommendation::StrongSell,
-                    _ => Recommendation::Hold,
-                };
-                Some(TradeJournalEntry {
+                Ok((
                     id,
                     timestamp,
-                    snapshot,
-                    recommendation,
+                    symbol,
+                    recommendation_str,
                     entry_price,
                     stop_loss,
                     target_price,
-                    risk_reward_ratio: rr,
-                    position_size_usd: pos_usd,
-                    outcome,
-                })
-            })
+                    risk_reward_ratio,
+                    position_size_usd,
+                    snapshot_json,
+                    outcome_json,
+                ))
+            })?
+            .filter_map(|r| r.ok())
+            .filter_map(
+                |(
+                    id,
+                    timestamp,
+                    _symbol,
+                    rec_str,
+                    entry_price,
+                    stop_loss,
+                    target_price,
+                    rr,
+                    pos_usd,
+                    snap_json,
+                    out_json,
+                )| {
+                    let snapshot: AnalysisSnapshot = serde_json::from_str(&snap_json).ok()?;
+                    let outcome = out_json.and_then(|j| serde_json::from_str(&j).ok());
+                    let recommendation = match rec_str.as_str() {
+                        "STRONG_BUY" => Recommendation::StrongBuy,
+                        "BUY" => Recommendation::Buy,
+                        "SELL" => Recommendation::Sell,
+                        "STRONG_SELL" => Recommendation::StrongSell,
+                        _ => Recommendation::Hold,
+                    };
+                    Some(TradeJournalEntry {
+                        id,
+                        timestamp,
+                        snapshot,
+                        recommendation,
+                        entry_price,
+                        stop_loss,
+                        target_price,
+                        risk_reward_ratio: rr,
+                        position_size_usd: pos_usd,
+                        outcome,
+                    })
+                },
+            )
             .collect();
 
         Ok(entries)
@@ -200,14 +236,19 @@ impl JournalStore {
 
     /// Get a single entry by ID.
     pub fn get_entry(&self, id: &str) -> Result<TradeJournalEntry, JournalError> {
-        let mut query = JournalQuery::default();
-        query.limit = Some(1);
+        let _query = JournalQuery {
+            limit: Some(1),
+            ..Default::default()
+        };
         // Use a direct query for single entry
-        let snap_json: String = self.conn.query_row(
-            "SELECT snapshot_json FROM journal_entries WHERE id = ?1",
-            params![id],
-            |row| row.get(0),
-        ).map_err(|_| JournalError::NotFound(id.to_string()))?;
+        let snap_json: String = self
+            .conn
+            .query_row(
+                "SELECT snapshot_json FROM journal_entries WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .map_err(|_| JournalError::NotFound(id.to_string()))?;
 
         let snapshot: AnalysisSnapshot = serde_json::from_str(&snap_json)?;
 
@@ -261,29 +302,46 @@ impl JournalStore {
             sql.push_str(" AND outcome_json IS NOT NULL");
         }
 
-        let params: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
-        let count: u32 = self.conn.query_row(&sql, params.as_slice(), |row| row.get(0))?;
+        let params: Vec<&dyn rusqlite::types::ToSql> =
+            param_values.iter().map(|p| p.as_ref()).collect();
+        let count: u32 = self
+            .conn
+            .query_row(&sql, params.as_slice(), |row| row.get(0))?;
         Ok(count)
     }
 
     /// Get all entries that have outcomes (for learning).
-    pub fn get_entries_with_outcome(&self, limit: Option<u32>) -> Result<Vec<TradeJournalEntry>, JournalError> {
-        let mut query = JournalQuery::default();
-        query.has_outcome = Some(true);
-        query.limit = limit;
+    pub fn get_entries_with_outcome(
+        &self,
+        limit: Option<u32>,
+    ) -> Result<Vec<TradeJournalEntry>, JournalError> {
+        let query = JournalQuery {
+            has_outcome: Some(true),
+            limit,
+            ..Default::default()
+        };
         self.query_entries(&query)
     }
 
     /// Get entries without outcomes (pending review).
-    pub fn get_pending_entries(&self, limit: Option<u32>) -> Result<Vec<TradeJournalEntry>, JournalError> {
-        let mut query = JournalQuery::default();
-        query.has_outcome = Some(false);
-        query.limit = limit;
+    pub fn get_pending_entries(
+        &self,
+        limit: Option<u32>,
+    ) -> Result<Vec<TradeJournalEntry>, JournalError> {
+        let query = JournalQuery {
+            has_outcome: Some(false),
+            limit,
+            ..Default::default()
+        };
         self.query_entries(&query)
     }
 
     /// Save a generic key-value learning state.
-    pub fn save_state<T: serde::Serialize>(&self, key: &str, value: &T) -> Result<(), JournalError> {
+    pub fn save_state<T: serde::Serialize>(
+        &self,
+        key: &str,
+        value: &T,
+    ) -> Result<(), JournalError> {
         let json = serde_json::to_string(value)?;
         self.conn.execute(
             "INSERT OR REPLACE INTO learning_state (key, value_json, updated_at) VALUES (?1, ?2, strftime('%s','now'))",
@@ -293,7 +351,10 @@ impl JournalStore {
     }
 
     /// Load a generic key-value learning state.
-    pub fn load_state<T: serde::de::DeserializeOwned>(&self, key: &str) -> Result<Option<T>, JournalError> {
+    pub fn load_state<T: serde::de::DeserializeOwned>(
+        &self,
+        key: &str,
+    ) -> Result<Option<T>, JournalError> {
         let json: Option<String> = self
             .conn
             .query_row(
@@ -350,10 +411,12 @@ mod tests {
         assert_eq!(retrieved.recommendation, Recommendation::StrongBuy);
 
         // Query
-        let results = store.query_entries(&JournalQuery {
-            symbol: Some("BTCUSDT".to_string()),
-            ..Default::default()
-        }).unwrap();
+        let results = store
+            .query_entries(&JournalQuery {
+                symbol: Some("BTCUSDT".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
         assert_eq!(results.len(), 1);
 
         // Record outcome
@@ -382,7 +445,10 @@ mod tests {
         let with_outcome = store.get_entries_with_outcome(None).unwrap();
         assert_eq!(with_outcome.len(), 1);
         assert!(with_outcome[0].outcome.is_some());
-        assert_eq!(with_outcome[0].outcome.as_ref().unwrap().actual_return_pct, 4.0);
+        assert_eq!(
+            with_outcome[0].outcome.as_ref().unwrap().actual_return_pct,
+            4.0
+        );
 
         // Duplicate outcome should fail
         assert!(store.record_outcome(&id, &outcome).is_err());
@@ -391,22 +457,35 @@ mod tests {
     #[test]
     fn test_journal_count() {
         let store = JournalStore::open_in_memory().unwrap();
-        store.insert_entry(&make_test_entry("BTCUSDT", 60.0)).unwrap();
-        store.insert_entry(&make_test_entry("ETHUSDT", 55.0)).unwrap();
-        store.insert_entry(&make_test_entry("BTCUSDT", 45.0)).unwrap();
+        store
+            .insert_entry(&make_test_entry("BTCUSDT", 60.0))
+            .unwrap();
+        store
+            .insert_entry(&make_test_entry("ETHUSDT", 55.0))
+            .unwrap();
+        store
+            .insert_entry(&make_test_entry("BTCUSDT", 45.0))
+            .unwrap();
 
         assert_eq!(store.count_entries(&JournalQuery::default()).unwrap(), 3);
-        assert_eq!(store.count_entries(&JournalQuery {
-            symbol: Some("BTCUSDT".to_string()),
-            ..Default::default()
-        }).unwrap(), 2);
+        assert_eq!(
+            store
+                .count_entries(&JournalQuery {
+                    symbol: Some("BTCUSDT".to_string()),
+                    ..Default::default()
+                })
+                .unwrap(),
+            2
+        );
     }
 
     #[test]
     fn test_learning_state() {
         let store = JournalStore::open_in_memory().unwrap();
 
-        store.save_state("test_weights", &vec![0.15, 0.10, 0.20]).unwrap();
+        store
+            .save_state("test_weights", &vec![0.15, 0.10, 0.20])
+            .unwrap();
         let loaded: Option<Vec<f64>> = store.load_state("test_weights").unwrap();
         assert_eq!(loaded, Some(vec![0.15, 0.10, 0.20]));
 

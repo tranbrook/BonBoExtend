@@ -183,3 +183,167 @@
 - **32 MCP tools** operational
 - **10 journal entries** recorded
 - **Continuous learning** running (PID active)
+
+## 2025-04-18 21:50 — Phase I-VI Implementation Complete
+
+### Phase I: Stability & Quality
+- Fixed all 34 clippy warnings → 0
+- Replaced unwrap() with proper error handling in production code
+- WebSocket auto-reconnect with exponential backoff (1s-60s, max 10 attempts)
+- Release build optimization: LTO, strip, panic=abort → binary 10MB → 6.4MB
+- Fixed journal DB path to use ~/.bonbo/journal.db
+
+### Phase II: Financial Precision
+- Converted all financial boundaries to rust_decimal (Journal, Risk, Quant models)
+- TA indicators stay f64 (computational intermediates)
+
+### Phase III: Test Coverage
+- Added 12 new tests to bonbo-quant (models, engine, report)
+- Updated WebSocket tests with reconnect tests
+
+### Phase IV: Strategy Discovery
+- Added 6 new strategies: BollingerBands, Momentum, Breakout, MACD, Grid, DCA
+- Added 3 new MCP tools: list_strategies, compare_strategies, export_pinescript
+- Fixed BreakoutStrategy channel calculation bug
+
+### Phase V: AI Integration
+- Created Telegram alert module with 5 alert types
+- Created PineScript v5 exporter for 4 strategies
+- Added export_pinescript MCP tool
+
+### Phase VI: Performance & Monitoring
+- Created SystemHealthService with real Linux /proc metrics
+- Health metrics: CPU, Memory, Load average, Status classification
+
+### Final Stats
+- Tests: 187 pass / 0 fail (+32 from baseline 155)
+- Clippy: 0 warnings (from 34)
+- Binary: 6.4MB (from 10MB)
+- Strategies: 8 (from 2)
+- MCP Tools: 35 (from 32)
+
+## 2026-04-20 12:30 — ARBUSDT Deep Research Continued
+
+### Context
+Tiếp tục từ session trước — ARBUSDT được Advanced Scanner V2 xếp hạng #1 (Score 80/100 STRONG BUY).
+
+### Work Done
+1. Started BonBoExtend MCP server (34 tools on port 9876)
+2. Collected comprehensive real-time data:
+   - Price: $0.1242 (-2.435% 24h), Volume: $5.86M
+   - Multi-timeframe TA: Daily bullish, 4H bearish, 1H ranging
+   - Orderbook analysis: Ask/Bid ratio 1.31 (slight sell pressure)
+   - Support/Resistance levels mapped
+3. Ran backtests (2 strategies on 500 candles 1H):
+   - SMA Crossover: +6.88% return, Sharpe 1.57
+   - RSI Mean Reversion: +3.92% return, Sharpe 0.81
+4. Gathered external analysis:
+   - JrKripto: Descending TL resistance at $0.12–0.124, breakout targets $0.139/$0.156
+   - CoinMarketCap: ARB broke multi-year downtrend, +57% from ATL
+   - KelpDAO exploit ($280M) as bearish factor
+5. Created comprehensive research report: docs/ARBUSDT_RESEARCH.md
+
+### Key Findings
+- ARB vừa phá vỡ multi-year downtrend (57% rally từ ATL)
+- Đang pullback về descending trendline cũ ($0.12–0.124)
+- Financial Hacker: 80/100 STRONG BUY, Hurst 0.67
+- Market sentiment: Fear 29/100
+- Overall Score: 6.3/10 — MODERATE BUY on breakout confirmation
+- Best trade: Buy breakout above $0.126 with SL $0.119
+
+### Files Created
+- docs/ARBUSDT_RESEARCH.md — Full research report (11 sections)
+- Knowledge entry #174 saved to persistent DB
+
+## 2026-04-20 18:30 — Financial-Hacker Indicators Integration (Steps 1-5)
+
+### Problem
+Phân tích trước đó chỉ dùng traditional indicators (RSI, MACD, BB, EMA) mà bỏ qua các chỉ báo Financial-Hacker đã implement trong `bonbo-ta` (ALMA, SuperSmoother, Hurst, CMO, LaguerreRSI).
+
+### Solution — 5 Steps Completed
+
+#### Step 1: Extended `FullAnalysis` in batch.rs
+- Added 6 new indicator vectors: alma10, alma30, super_smoother20, hurst, cmo14, laguerre_rsi
+- `compute_full_analysis()` now populates all 14 indicators
+- Default candle limit changed from 100 to 200 (Hurst needs ≥100)
+
+#### Step 2: Upgraded `generate_signals()` with Hurst regime filter
+- Market character from Hurst: Trending (>0.55), MeanReverting (<0.45), RandomWalk (≈0.5)
+- Regime-aware indicator weights:
+  - Trending: ALMA crossover 70%, BB reduced to 30%
+  - Mean-reverting: BB 60%, ALMA reduced to 30%
+  - Random walk: all reduced, caution flag
+- Added 5 new signal sources: ALMA(10,30), SuperSmoother(20), Hurst(100), CMO(14), LaguerreRSI(0.8)
+
+#### Step 3: Upgraded `detect_market_regime()` with Hurst Exponent
+- Primary classifier: Hurst Exponent (100-bar rolling window)
+  - H > 0.55 → Trending (Up/Down based on simple trend)
+  - H < 0.45 → Mean-Reverting (Ranging/Quiet)
+  - H ≈ 0.5 → Random Walk (caution)
+- Volatility override: if volatility > 5% → Volatile regardless of Hurst
+- Falls back to simple trend+volatility for <100 candles
+- Shows strategy recommendation (Trend-Follow, Mean-Revert, AVOID)
+
+#### Step 4: Extended `do_analyze_indicators()` in technical_analysis.rs
+- New "Financial-Hacker Indicators" section in output:
+  - 🔮 ALMA crossover (ALMA(10) vs ALMA(30))
+  - 📉 SuperSmoother(20) slope
+  - 🧬 Hurst Exponent with regime interpretation
+  - ⚡ CMO(14) with overbought/oversold labels
+  - 🌀 LaguerreRSI(0.8) with adaptive levels
+- `get_trading_signals()` shows market character header (TRENDING/MEAN-REVERTING/RANDOM WALK)
+- `detect_market_regime()` shows Hurst value, character, and strategy recommendation
+
+#### Step 5: Hurst-enhanced scoring in scanner.rs
+- `scan_market()` fetches 200 1H candles per symbol
+- Computes Hurst Exponent for each symbol
+- Hurst-aware scoring:
+  - Trending (H>0.55) + positive momentum → boost +8
+  - Mean-reverting (H<0.45) + oversold → boost +10
+  - Random walk (H≈0.5) → penalty -5
+- Shows H=value and strategy hint for each coin
+
+### Test Results
+- **222 tests pass, 0 fail**
+- **0 compiler errors**
+- **Release build: 6.4MB**
+- **MCP server: 34 tools loaded**
+- All FH indicators verified via real Binance data:
+  - BTC 4H: Hurst=0.530 (Random Walk), ALMA bearish (-0.80%), CMO=-29.6
+  - AAVE 1H: Hurst=0.702 (Trending), LaguerreRSI=0.023 (Oversold)
+  - Scanner shows H= values for all 10 coins
+
+### Files Modified
+- `bonbo-ta/src/batch.rs` — FullAnalysis struct + generate_signals + detect_market_regime
+- `bonbo-extend/src/tools/technical_analysis.rs` — MCP tool output with FH section
+- `bonbo-extend/src/tools/scanner.rs` — Hurst-enhanced scoring
+
+### Key Finding
+Hurst values differ significantly by timeframe:
+- BTC 1H: H=0.70 (strongly trending)
+- BTC 4H: H=0.53 (random walk)
+- This means timeframe selection matters enormously for Hurst-based strategy choice
+
+
+## 2026-04-21 11:18 - Session Started
+- Project structure files verified
+- Resumed work on existing project
+- Todo.md updated with new session section
+- PROJECT_README.md context checked
+- Ready for continued development
+
+
+## 2026-04-21 14:45 — Upgrade analyze_top100.py v1 to v2.0
+
+### Problem: File truncated at line 785 (syntax error)
+### Fixes: cache.get bug, PositionData type, redundant DB query, missing 540 lines
+### Result: 1319 lines, 12 classes, 52 functions, all tests pass
+
+
+## 2026-04-21 18:23 - Session Started
+- Project structure files verified
+- Resumed work on existing project
+- Todo.md updated with new session section
+- PROJECT_README.md context checked
+- Ready for continued development
+

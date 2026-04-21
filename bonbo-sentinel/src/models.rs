@@ -6,10 +6,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SentimentSignal {
     pub source: String,
-    pub value: f64,       // Normalized to [-1, +1]
-    pub raw_value: f64,   // Original scale
+    pub value: f64,     // Normalized to [-1, +1]
+    pub raw_value: f64, // Original scale
     pub timestamp: i64,
-    pub label: String,    // e.g., "Fear", "Greed", "Neutral"
+    pub label: String, // e.g., "Fear", "Greed", "Neutral"
 }
 
 /// On-chain metrics for a given symbol.
@@ -139,9 +139,7 @@ mod tests {
 
     #[test]
     fn test_composite_clamps_to_range() {
-        let signals = vec![
-            make_signal("FearGreedIndex", 5.0),
-        ];
+        let signals = vec![make_signal("FearGreedIndex", 5.0)];
         let score = CompositeSentiment::compute(&signals);
         assert!(score <= 1.0);
     }

@@ -1,7 +1,7 @@
 //! Oscillator indicators: RSI, MACD, Stochastic, CCI.
 
-use crate::indicators::Ema;
 use crate::IncrementalIndicator;
+use crate::indicators::Ema;
 use serde::{Deserialize, Serialize};
 
 // ─── RSI (Relative Strength Index) ───────────────────────────────
@@ -67,11 +67,16 @@ impl IncrementalIndicator for Rsi {
                     self.avg_gain = Some(sum_gains / self.period as f64);
                     self.avg_loss = Some(sum_losses / self.period as f64);
 
-                    if self.avg_loss.unwrap() == 0.0 {
+                    if self.avg_loss.unwrap() < f64::EPSILON {
                         return Some(100.0);
                     }
                     let rs = self.avg_gain.unwrap() / self.avg_loss.unwrap();
-                    Some(100.0 - (100.0 / (1.0 + rs)))
+                    let rsi = 100.0 - (100.0 / (1.0 + rs));
+                    if rsi.is_nan() || rsi.is_infinite() {
+                        None
+                    } else {
+                        Some(rsi)
+                    }
                 } else {
                     None
                 }
@@ -84,11 +89,17 @@ impl IncrementalIndicator for Rsi {
                 self.avg_gain = Some(ag);
                 self.avg_loss = Some(new_al);
 
-                if new_al == 0.0 {
+                if new_al < f64::EPSILON {
+                    // All gains, no losses → RSI = 100
                     return Some(100.0);
                 }
                 let rs = ag / new_al;
-                Some(100.0 - (100.0 / (1.0 + rs)))
+                let rsi = 100.0 - (100.0 / (1.0 + rs));
+                if rsi.is_nan() || rsi.is_infinite() {
+                    None
+                } else {
+                    Some(rsi)
+                }
             }
         }
     }
@@ -139,7 +150,8 @@ pub struct Macd {
 impl Macd {
     /// Standard MACD: fast=12, slow=26, signal=9.
     pub fn new(fast_period: usize, slow_period: usize, signal_period: usize) -> Option<Self> {
-        if fast_period == 0 || slow_period == 0 || signal_period == 0 || fast_period >= slow_period {
+        if fast_period == 0 || slow_period == 0 || signal_period == 0 || fast_period >= slow_period
+        {
             return None;
         }
         Some(Self {
@@ -169,17 +181,23 @@ impl IncrementalIndicator for Macd {
             (Some(f), Some(s)) => {
                 let macd_line = f - s;
                 let signal = self.signal_ema.next(macd_line);
-                match signal {
-                    Some(sig) => Some(MacdResult {
+                let result = match signal {
+                    Some(sig) => MacdResult {
                         macd_line,
                         signal_line: sig,
                         histogram: macd_line - sig,
-                    }),
-                    None => Some(MacdResult {
+                    },
+                    None => MacdResult {
                         macd_line,
                         signal_line: 0.0,
                         histogram: macd_line,
-                    }),
+                    },
+                };
+                // Guard against NaN/Inf
+                if result.macd_line.is_nan() || result.macd_line.is_infinite() {
+                    None
+                } else {
+                    Some(result)
                 }
             }
             _ => None,
@@ -254,16 +272,34 @@ impl Stochastic {
             self.low_buffer.remove(0);
         }
 
-        let highest = self.high_buffer.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-        let lowest = self.low_buffer.iter().cloned().fold(f64::INFINITY, f64::min);
+        let highest = self
+            .high_buffer
+            .iter()
+            .cloned()
+            .fold(f64::NEG_INFINITY, f64::max);
+        let lowest = self
+            .low_buffer
+            .iter()
+            .cloned()
+            .fold(f64::INFINITY, f64::min);
 
         let range = highest - lowest;
-        let k = if range == 0.0 { 50.0 } else { ((close - lowest) / range) * 100.0 };
+        let k = if range < f64::EPSILON {
+            50.0
+        } else {
+            ((close - lowest) / range) * 100.0
+        };
 
         let d = self.d_sma.next(k);
-        match d {
-            Some(d_val) => Some(StochasticResult { k, d: d_val }),
-            None => Some(StochasticResult { k, d: k }),
+        let result = match d {
+            Some(d_val) => StochasticResult { k, d: d_val },
+            None => StochasticResult { k, d: k },
+        };
+        // Guard against NaN/Inf
+        if result.k.is_nan() || result.k.is_infinite() {
+            None
+        } else {
+            Some(result)
         }
     }
 }
@@ -302,14 +338,19 @@ impl Cci {
         }
 
         let mean: f64 = self.tp_buffer.iter().sum::<f64>() / self.period as f64;
-        let mean_dev: f64 = self.tp_buffer.iter().map(|x| (x - mean).abs()).sum::<f64>()
-            / self.period as f64;
+        let mean_dev: f64 =
+            self.tp_buffer.iter().map(|x| (x - mean).abs()).sum::<f64>() / self.period as f64;
 
-        if mean_dev == 0.0 {
+        if mean_dev < f64::EPSILON {
             return Some(0.0);
         }
 
-        Some((typical_price - mean) / (0.015 * mean_dev))
+        let cci = (typical_price - mean) / (0.015 * mean_dev);
+        if cci.is_nan() || cci.is_infinite() {
+            None
+        } else {
+            Some(cci)
+        }
     }
 }
 
@@ -324,7 +365,11 @@ mod tests {
         for i in 0..20 {
             let val = rsi.next(100.0 + (i + 1) as f64 * 2.0);
             if let Some(v) = val {
-                assert!(v > 90.0, "RSI should be high after continuous gains: got {}", v);
+                assert!(
+                    v > 90.0,
+                    "RSI should be high after continuous gains: got {}",
+                    v
+                );
             }
         }
     }
@@ -335,7 +380,11 @@ mod tests {
         for i in 0..20 {
             let val = rsi.next(100.0 - (i + 1) as f64 * 2.0);
             if let Some(v) = val {
-                assert!(v < 10.0, "RSI should be low after continuous drops: got {}", v);
+                assert!(
+                    v < 10.0,
+                    "RSI should be low after continuous drops: got {}",
+                    v
+                );
             }
         }
     }

@@ -80,9 +80,15 @@ impl ScoringWeights {
     }
 
     pub fn sum(&self) -> f64 {
-        self.rsi_weight + self.macd_weight + self.bb_weight + self.signals_weight
-            + self.regime_weight + self.risk_reward_weight + self.backtest_weight
-            + self.sentiment_weight + self.momentum_weight
+        self.rsi_weight
+            + self.macd_weight
+            + self.bb_weight
+            + self.signals_weight
+            + self.regime_weight
+            + self.risk_reward_weight
+            + self.backtest_weight
+            + self.sentiment_weight
+            + self.momentum_weight
     }
 
     pub fn to_vec(&self) -> Vec<(&'static str, f64)> {

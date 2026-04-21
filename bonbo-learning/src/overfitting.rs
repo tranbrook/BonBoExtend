@@ -22,14 +22,21 @@ pub fn deflated_sharpe_ratio(
         / n.sqrt();
 
     // Adjust for non-normality
-    let se_sharpe = ((1.0 + 0.5 * observed_sharpe.powi(2) - skewness * observed_sharpe + (kurtosis - 3.0) / 4.0 * observed_sharpe.powi(2)) / n).sqrt();
+    let se_sharpe = ((1.0 + 0.5 * observed_sharpe.powi(2) - skewness * observed_sharpe
+        + (kurtosis - 3.0) / 4.0 * observed_sharpe.powi(2))
+        / n)
+        .sqrt();
 
     if se_sharpe < 1e-10 {
-        return if observed_sharpe > expected_sharpe { 1.0 } else { 0.0 };
+        return if observed_sharpe > expected_sharpe {
+            1.0
+        } else {
+            0.0
+        };
     }
 
     // DSR = CDF of standard normal at (SR - E[max(SR)]) / SE
-        let z = (observed_sharpe - expected_sharpe) / se_sharpe;
+    let z = (observed_sharpe - expected_sharpe) / se_sharpe;
     // Approximate CDF of standard normal
     normal_cdf(z)
 }
@@ -50,7 +57,8 @@ pub fn probability_of_backtest_overfitting(
     }
 
     // Find best IS strategy
-    let best_is_idx = is_returns.iter()
+    let best_is_idx = is_returns
+        .iter()
         .enumerate()
         .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
         .map(|(i, _)| i)
@@ -59,7 +67,7 @@ pub fn probability_of_backtest_overfitting(
     // Compute median OOS
     let mut sorted_oos = oos_returns.to_vec();
     sorted_oos.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let median_oos = if sorted_oos.len() % 2 == 0 {
+    let median_oos = if sorted_oos.len().is_multiple_of(2) {
         (sorted_oos[sorted_oos.len() / 2 - 1] + sorted_oos[sorted_oos.len() / 2]) / 2.0
     } else {
         sorted_oos[sorted_oos.len() / 2]
@@ -116,7 +124,12 @@ mod tests {
         // Low Sharpe, many trials → lower DSR than high Sharpe test
         let dsr = deflated_sharpe_ratio(0.5, 100, 100, 0.0, 3.0);
         let dsr_high = deflated_sharpe_ratio(2.0, 5, 1000, 0.0, 3.0);
-        assert!(dsr < dsr_high, "DSR with many trials should be lower, got {} vs {}", dsr, dsr_high);
+        assert!(
+            dsr < dsr_high,
+            "DSR with many trials should be lower, got {} vs {}",
+            dsr,
+            dsr_high
+        );
     }
 
     #[test]

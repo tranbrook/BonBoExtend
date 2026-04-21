@@ -2,10 +2,10 @@
 
 pub mod error;
 pub mod models;
-pub mod scheduler;
 pub mod scanner;
+pub mod scheduler;
 
 pub use error::ScannerError;
 pub use models::*;
-pub use scanner::MarketScanner;
+pub use scanner::{DataPoint, MarketScanner};
 pub use scheduler::ScanScheduler;

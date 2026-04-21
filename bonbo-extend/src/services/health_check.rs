@@ -2,8 +2,8 @@
 
 use crate::plugin::{PluginContext, PluginMetadata, ServicePlugin};
 use async_trait::async_trait;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::RwLock;
 use tracing::info;
 
@@ -61,7 +61,10 @@ impl ServicePlugin for HealthCheckService {
             info!("Health check service stopped");
         });
 
-        info!("Health check service started (interval: {}s)", self.interval_secs);
+        info!(
+            "Health check service started (interval: {}s)",
+            self.interval_secs
+        );
         Ok(())
     }
 

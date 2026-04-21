@@ -6,12 +6,13 @@
 //! - Pre-built tools (trading, market data, notifications)
 //! - Background service framework
 
+mod error;
+pub mod integration;
 pub mod plugin;
 pub mod registry;
-pub mod tools;
 pub mod services;
-mod error;
+pub mod tools;
 
 pub use error::{ExtendError, ExtendResult};
-pub use plugin::{ToolPlugin, ServicePlugin, PluginMetadata, PluginContext};
+pub use plugin::{PluginContext, PluginMetadata, ServicePlugin, ToolPlugin};
 pub use registry::PluginRegistry;

@@ -17,8 +17,18 @@ impl CpcvValidator {
     /// - n_test_groups: Number of groups for testing (e.g., 2)
     /// - purge_bars: Number of bars to purge between train/test (prevent leakage)
     /// - embargo_bars: Additional embargo after test set
-    pub fn new(n_groups: usize, n_test_groups: usize, purge_bars: usize, embargo_bars: usize) -> Self {
-        Self { n_groups, n_test_groups, purge_bars, embargo_bars }
+    pub fn new(
+        n_groups: usize,
+        n_test_groups: usize,
+        purge_bars: usize,
+        embargo_bars: usize,
+    ) -> Self {
+        Self {
+            n_groups,
+            n_test_groups,
+            purge_bars,
+            embargo_bars,
+        }
     }
 
     /// Validate strategy returns using CPCV.
@@ -26,9 +36,11 @@ impl CpcvValidator {
     pub fn validate(&self, returns: &[f64]) -> Result<CpcvResult, ValidationError> {
         let n = returns.len();
         if n < self.n_groups * 10 {
-            return Err(ValidationError::InsufficientData(
-                format!("Need at least {} bars, got {}", self.n_groups * 10, n)
-            ));
+            return Err(ValidationError::InsufficientData(format!(
+                "Need at least {} bars, got {}",
+                self.n_groups * 10,
+                n
+            )));
         }
 
         let group_size = n / self.n_groups;
@@ -43,7 +55,11 @@ impl CpcvValidator {
 
             for (g_idx, _) in (0..self.n_groups).enumerate() {
                 let start = g_idx * group_size;
-                let end = if g_idx == self.n_groups - 1 { n } else { (g_idx + 1) * group_size };
+                let end = if g_idx == self.n_groups - 1 {
+                    n
+                } else {
+                    (g_idx + 1) * group_size
+                };
 
                 let is_test = test_groups.contains(&g_idx);
 
@@ -56,12 +72,20 @@ impl CpcvValidator {
                     }
                 } else {
                     // Apply purging: skip bars near test groups
-                    let is_adjacent_to_test = test_groups.iter().any(|&tg| {
-                        (tg as i64 - g_idx as i64).unsigned_abs() == 1
-                    });
+                    let is_adjacent_to_test = test_groups
+                        .iter()
+                        .any(|&tg| (tg as i64 - g_idx as i64).unsigned_abs() == 1);
 
-                    let p_start = if is_adjacent_to_test { start + self.purge_bars } else { start };
-                    let p_end = if is_adjacent_to_test { end.saturating_sub(self.purge_bars) } else { end };
+                    let p_start = if is_adjacent_to_test {
+                        start + self.purge_bars
+                    } else {
+                        start
+                    };
+                    let p_end = if is_adjacent_to_test {
+                        end.saturating_sub(self.purge_bars)
+                    } else {
+                        end
+                    };
 
                     if p_start < p_end {
                         train_returns.extend_from_slice(&returns[p_start..p_end]);
@@ -76,9 +100,16 @@ impl CpcvValidator {
             }
         }
 
-        let mean = if oos_sharpes.is_empty() { 0.0 } else { oos_sharpes.iter().sum::<f64>() / oos_sharpes.len() as f64 };
-        let variance = if oos_sharpes.len() < 2 { 0.0 } else {
-            oos_sharpes.iter().map(|s| (s - mean).powi(2)).sum::<f64>() / (oos_sharpes.len() - 1) as f64
+        let mean = if oos_sharpes.is_empty() {
+            0.0
+        } else {
+            oos_sharpes.iter().sum::<f64>() / oos_sharpes.len() as f64
+        };
+        let variance = if oos_sharpes.len() < 2 {
+            0.0
+        } else {
+            oos_sharpes.iter().map(|s| (s - mean).powi(2)).sum::<f64>()
+                / (oos_sharpes.len() - 1) as f64
         };
 
         Ok(CpcvResult {
@@ -98,8 +129,12 @@ pub struct CpcvResult {
 }
 
 fn generate_combinations(n: usize, k: usize) -> Vec<Vec<usize>> {
-    if k == 0 { return vec![vec![]]; }
-    if k > n { return vec![]; }
+    if k == 0 {
+        return vec![vec![]];
+    }
+    if k > n {
+        return vec![];
+    }
 
     let mut result = Vec::new();
     let mut current = Vec::new();
@@ -107,7 +142,13 @@ fn generate_combinations(n: usize, k: usize) -> Vec<Vec<usize>> {
     result
 }
 
-fn combinations_helper(n: usize, k: usize, start: usize, current: &mut Vec<usize>, result: &mut Vec<Vec<usize>>) {
+fn combinations_helper(
+    n: usize,
+    k: usize,
+    start: usize,
+    current: &mut Vec<usize>,
+    result: &mut Vec<Vec<usize>>,
+) {
     if current.len() == k {
         result.push(current.clone());
         return;
@@ -120,12 +161,16 @@ fn combinations_helper(n: usize, k: usize, start: usize, current: &mut Vec<usize
 }
 
 fn compute_sharpe(returns: &[f64]) -> f64 {
-    if returns.is_empty() { return 0.0; }
+    if returns.is_empty() {
+        return 0.0;
+    }
     let n = returns.len() as f64;
     let mean = returns.iter().sum::<f64>() / n;
     let variance = returns.iter().map(|r| (r - mean).powi(2)).sum::<f64>() / n;
     let std_dev = variance.sqrt();
-    if std_dev < 1e-10 { return if mean > 0.0 { f64::INFINITY } else { 0.0 }; }
+    if std_dev < 1e-10 {
+        return if mean > 0.0 { f64::INFINITY } else { 0.0 };
+    }
     (mean / std_dev) * (252.0_f64).sqrt()
 }
 
@@ -136,9 +181,14 @@ mod tests {
     #[test]
     fn test_cpcv_positive_returns() {
         let validator = CpcvValidator::new(6, 2, 2, 1);
-        let returns: Vec<f64> = (0..200).map(|i| 0.001 + (i as f64 * 0.0001).sin() * 0.002).collect();
+        let returns: Vec<f64> = (0..200)
+            .map(|i| 0.001 + (i as f64 * 0.0001).sin() * 0.002)
+            .collect();
         let result = validator.validate(&returns).unwrap();
-        assert!(result.mean_sharpe > 0.0, "Positive returns should give positive Sharpe");
+        assert!(
+            result.mean_sharpe > 0.0,
+            "Positive returns should give positive Sharpe"
+        );
         assert!(result.n_combinations > 0);
         assert_eq!(result.n_combinations, 15); // C(6,2) = 15
     }

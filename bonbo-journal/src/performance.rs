@@ -81,7 +81,8 @@ impl<'a> PerformanceTracker<'a> {
         for entry in &with_outcome {
             let outcome = entry.outcome.as_ref().unwrap();
             for (indicator, &correct) in &outcome.indicator_accuracy {
-                let (total, correct_count) = indicator_stats.entry(indicator.clone()).or_insert((0, 0));
+                let (total, correct_count) =
+                    indicator_stats.entry(indicator.clone()).or_insert((0, 0));
                 *total += 1;
                 if correct {
                     *correct_count += 1;
@@ -97,7 +98,11 @@ impl<'a> PerformanceTracker<'a> {
                         name,
                         total_signals: total,
                         correct_signals: correct,
-                        accuracy: if total > 0 { correct as f64 / total as f64 } else { 0.0 },
+                        accuracy: if total > 0 {
+                            correct as f64 / total as f64
+                        } else {
+                            0.0
+                        },
                     },
                 )
             })
@@ -126,8 +131,16 @@ impl<'a> PerformanceTracker<'a> {
                         regime,
                         total_predictions: total,
                         correct_direction: correct,
-                        accuracy: if total > 0 { correct as f64 / total as f64 } else { 0.0 },
-                        avg_return: if total > 0 { sum_return / total as f64 } else { 0.0 },
+                        accuracy: if total > 0 {
+                            correct as f64 / total as f64
+                        } else {
+                            0.0
+                        },
+                        avg_return: if total > 0 {
+                            sum_return / total as f64
+                        } else {
+                            0.0
+                        },
                     },
                 )
             })
@@ -183,12 +196,20 @@ mod tests {
     use super::*;
     use crate::journal::JournalStore;
 
-    fn make_entry_with_outcome(symbol: &str, return_pct: f64, direction_correct: bool) -> TradeJournalEntry {
+    fn make_entry_with_outcome(
+        symbol: &str,
+        return_pct: f64,
+        direction_correct: bool,
+    ) -> TradeJournalEntry {
         let mut entry = TradeJournalEntry {
             id: uuid::Uuid::new_v4().to_string(),
             timestamp: chrono::Utc::now().timestamp(),
             snapshot: AnalysisSnapshot::default(),
-            recommendation: if return_pct > 0.0 { Recommendation::Buy } else { Recommendation::Sell },
+            recommendation: if return_pct > 0.0 {
+                Recommendation::Buy
+            } else {
+                Recommendation::Sell
+            },
             entry_price: 50_000.0,
             stop_loss: 48_000.0,
             target_price: 54_000.0,

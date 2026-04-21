@@ -2,7 +2,7 @@
 //!
 //! Run with: cargo bench -p bonbo-risk
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 
 // ─── Helper ─────────────────────────────────────────────────────
 
@@ -12,7 +12,8 @@ fn generate_returns(n: usize) -> Vec<f64> {
         .map(|i| {
             // Normal-like distribution via Box-Muller approximation
             let u1 = ((i * 1103515245 + 12345) % 2147483647) as f64 / 2147483647.0;
-            let u2 = ((i * 6364136223 + 1442695040888963407_u64 as usize) % 2147483647) as f64 / 2147483647.0;
+            let u2 = ((i * 6364136223 + 1442695040888963407_u64 as usize) % 2147483647) as f64
+                / 2147483647.0;
             let u1 = u1.max(1e-10);
             (-2.0 * u1.ln()).sqrt() * (2.0 * PI * u2).cos() * 0.02 // ~2% daily vol
         })
@@ -66,16 +67,26 @@ fn bench_portfolio_metrics(c: &mut Criterion) {
     for size in [100, 1_000, 5_000] {
         let (pnls, equity) = generate_equity_curve(size, 100_000.0);
         group.throughput(Throughput::Elements(size as u64));
-        group.bench_with_input(BenchmarkId::new("full_metrics", size), &(pnls, equity), |b, (pnls, eq)| {
-            b.iter(|| bonbo_risk::var::compute_portfolio_metrics(black_box(pnls), black_box(eq), 100_000.0));
-        });
+        group.bench_with_input(
+            BenchmarkId::new("full_metrics", size),
+            &(pnls, equity),
+            |b, (pnls, eq)| {
+                b.iter(|| {
+                    bonbo_risk::var::compute_portfolio_metrics(
+                        black_box(pnls),
+                        black_box(eq),
+                        100_000.0,
+                    )
+                });
+            },
+        );
     }
     group.finish();
 }
 
 fn bench_position_sizing(c: &mut Criterion) {
-    use bonbo_risk::position_sizing::{PositionSizer, SizingMethod};
     use bonbo_risk::models::RiskConfig;
+    use bonbo_risk::position_sizing::{PositionSizer, SizingMethod};
 
     c.bench_function("position_size_fixed_pct", |b| {
         let sizer = PositionSizer::new(

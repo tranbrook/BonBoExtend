@@ -21,7 +21,11 @@ impl DmaModel {
     }
 
     pub fn accuracy(&self) -> f64 {
-        if self.predictions == 0 { 0.5 } else { self.correct as f64 / self.predictions as f64 }
+        if self.predictions == 0 {
+            0.5
+        } else {
+            self.correct as f64 / self.predictions as f64
+        }
     }
 }
 

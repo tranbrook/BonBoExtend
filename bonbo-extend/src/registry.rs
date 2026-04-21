@@ -19,6 +19,12 @@ pub struct PluginRegistry {
     bonbo_data_dir: std::path::PathBuf,
 }
 
+impl Default for PluginRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PluginRegistry {
     /// Create a new empty registry.
     pub fn new() -> Self {
@@ -59,15 +65,22 @@ impl PluginRegistry {
                 );
                 continue;
             }
-            debug!("Registered tool '{}' from plugin '{}'", tool.name, plugin_id);
-            self.tool_to_plugin.insert(tool.name.clone(), plugin_id.clone());
+            debug!(
+                "Registered tool '{}' from plugin '{}'",
+                tool.name, plugin_id
+            );
+            self.tool_to_plugin
+                .insert(tool.name.clone(), plugin_id.clone());
         }
 
         // Create context for this plugin.
         let context = PluginContext::new(self.bonbo_data_dir.clone(), &plugin_id);
         self.contexts.insert(plugin_id.clone(), context);
 
-        info!("Registered tool plugin: {} v{}", metadata.name, metadata.version);
+        info!(
+            "Registered tool plugin: {} v{}",
+            metadata.name, metadata.version
+        );
         self.tool_plugins.insert(plugin_id, Arc::new(plugin));
         Ok(())
     }
@@ -97,11 +110,17 @@ impl PluginRegistry {
     }
 
     /// Execute a tool by name.
-    pub async fn execute_tool(&self, tool_name: &str, arguments: &serde_json::Value) -> ExtendResult<String> {
+    pub async fn execute_tool(
+        &self,
+        tool_name: &str,
+        arguments: &serde_json::Value,
+    ) -> ExtendResult<String> {
         let plugin_id = self
             .tool_to_plugin
             .get(tool_name)
-            .ok_or_else(|| ExtendError::PluginNotFound(format!("No plugin provides tool: {}", tool_name)))?
+            .ok_or_else(|| {
+                ExtendError::PluginNotFound(format!("No plugin provides tool: {}", tool_name))
+            })?
             .clone();
 
         let plugin = self
@@ -263,7 +282,9 @@ mod tests {
     #[tokio::test]
     async fn test_execute_unknown_tool() {
         let registry = PluginRegistry::new();
-        let result = registry.execute_tool("unknown", &serde_json::json!({})).await;
+        let result = registry
+            .execute_tool("unknown", &serde_json::json!({}))
+            .await;
         assert!(result.is_err());
     }
 

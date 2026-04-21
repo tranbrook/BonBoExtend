@@ -11,16 +11,21 @@ pub struct WalkForwardValidator {
 
 impl WalkForwardValidator {
     pub fn new(n_splits: usize, purge_bars: usize, embargo_bars: usize) -> Self {
-        Self { n_splits, purge_bars, embargo_bars }
+        Self {
+            n_splits,
+            purge_bars,
+            embargo_bars,
+        }
     }
 
     /// Run walk-forward validation on returns.
     pub fn validate(&self, returns: &[f64]) -> Result<WalkForwardResult, ValidationError> {
         let n = returns.len();
         if n < self.n_splits * 20 {
-            return Err(ValidationError::InsufficientData(
-                format!("Need at least {} bars", self.n_splits * 20)
-            ));
+            return Err(ValidationError::InsufficientData(format!(
+                "Need at least {} bars",
+                self.n_splits * 20
+            )));
         }
 
         let mut train_sharpes = Vec::new();
@@ -45,8 +50,16 @@ impl WalkForwardValidator {
             }
         }
 
-        let avg_train = if train_sharpes.is_empty() { 0.0 } else { train_sharpes.iter().sum::<f64>() / train_sharpes.len() as f64 };
-        let avg_test = if test_sharpes.is_empty() { 0.0 } else { test_sharpes.iter().sum::<f64>() / test_sharpes.len() as f64 };
+        let avg_train = if train_sharpes.is_empty() {
+            0.0
+        } else {
+            train_sharpes.iter().sum::<f64>() / train_sharpes.len() as f64
+        };
+        let avg_test = if test_sharpes.is_empty() {
+            0.0
+        } else {
+            test_sharpes.iter().sum::<f64>() / test_sharpes.len() as f64
+        };
 
         Ok(WalkForwardResult {
             train_sharpes,
@@ -67,12 +80,16 @@ pub struct WalkForwardResult {
 }
 
 fn compute_sharpe(returns: &[f64]) -> f64 {
-    if returns.is_empty() { return 0.0; }
+    if returns.is_empty() {
+        return 0.0;
+    }
     let n = returns.len() as f64;
     let mean = returns.iter().sum::<f64>() / n;
     let variance = returns.iter().map(|r| (r - mean).powi(2)).sum::<f64>() / n;
     let std_dev = variance.sqrt();
-    if std_dev < 1e-10 { return if mean > 0.0 { f64::INFINITY } else { 0.0 }; }
+    if std_dev < 1e-10 {
+        return if mean > 0.0 { f64::INFINITY } else { 0.0 };
+    }
     (mean / std_dev) * (252.0_f64).sqrt()
 }
 
@@ -83,7 +100,9 @@ mod tests {
     #[test]
     fn test_walk_forward() {
         let validator = WalkForwardValidator::new(5, 2, 1);
-        let returns: Vec<f64> = (0..200).map(|i| 0.001 + (i as f64 * 0.0001).sin() * 0.002).collect();
+        let returns: Vec<f64> = (0..200)
+            .map(|i| 0.001 + (i as f64 * 0.0001).sin() * 0.002)
+            .collect();
         let result = validator.validate(&returns).unwrap();
         assert!(result.train_sharpes.len() > 0);
         assert!(result.test_sharpes.len() > 0);

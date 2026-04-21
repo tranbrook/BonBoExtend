@@ -5,7 +5,9 @@ use crate::models::PortfolioMetrics;
 /// Historical Value at Risk at given confidence level.
 /// Returns the maximum loss at the given confidence (e.g., 0.95 = 95%).
 pub fn compute_var(returns: &[f64], confidence: f64) -> f64 {
-    if returns.is_empty() { return 0.0; }
+    if returns.is_empty() {
+        return 0.0;
+    }
     let mut sorted: Vec<f64> = returns.to_vec();
     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let idx = ((1.0 - confidence) * sorted.len() as f64).floor() as usize;
@@ -16,7 +18,9 @@ pub fn compute_var(returns: &[f64], confidence: f64) -> f64 {
 /// Conditional VaR (Expected Shortfall).
 /// Average of losses beyond VaR threshold.
 pub fn compute_cvar(returns: &[f64], confidence: f64) -> f64 {
-    if returns.is_empty() { return 0.0; }
+    if returns.is_empty() {
+        return 0.0;
+    }
     let mut sorted: Vec<f64> = returns.to_vec();
     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let tail_count = ((1.0 - confidence) * sorted.len() as f64).ceil() as usize;
@@ -26,9 +30,17 @@ pub fn compute_cvar(returns: &[f64], confidence: f64) -> f64 {
 }
 
 /// Compute full portfolio metrics from trade PnLs and equity curve.
-pub fn compute_portfolio_metrics(trade_pnls: &[f64], equity_curve: &[f64], initial_capital: f64) -> PortfolioMetrics {
+pub fn compute_portfolio_metrics(
+    trade_pnls: &[f64],
+    equity_curve: &[f64],
+    initial_capital: f64,
+) -> PortfolioMetrics {
     let current_equity = equity_curve.last().copied().unwrap_or(initial_capital);
-    let total_return_pct = if initial_capital > 0.0 { (current_equity - initial_capital) / initial_capital } else { 0.0 };
+    let total_return_pct = if initial_capital > 0.0 {
+        (current_equity - initial_capital) / initial_capital
+    } else {
+        0.0
+    };
 
     // Win rate
     let wins = trade_pnls.iter().filter(|&&p| p > 0.0).count();
@@ -38,19 +50,35 @@ pub fn compute_portfolio_metrics(trade_pnls: &[f64], equity_curve: &[f64], initi
 
     // Profit factor
     let gross_profit: f64 = trade_pnls.iter().filter(|&&p| p > 0.0).sum();
-    let gross_loss: f64 = trade_pnls.iter().filter(|&&p| p < 0.0).map(|p| p.abs()).sum();
-    let profit_factor = if gross_loss > 0.0 { gross_profit / gross_loss } else { 0.0 };
+    let gross_loss: f64 = trade_pnls
+        .iter()
+        .filter(|&&p| p < 0.0)
+        .map(|p| p.abs())
+        .sum();
+    let profit_factor = if gross_loss > 0.0 {
+        gross_profit / gross_loss
+    } else {
+        0.0
+    };
 
     // Average trade PnL
-    let avg_trade_pnl = if !trade_pnls.is_empty() { trade_pnls.iter().sum::<f64>() / trade_pnls.len() as f64 } else { 0.0 };
+    let avg_trade_pnl = if !trade_pnls.is_empty() {
+        trade_pnls.iter().sum::<f64>() / trade_pnls.len() as f64
+    } else {
+        0.0
+    };
 
     // Max drawdown
     let mut peak = initial_capital;
     let mut max_dd = 0.0;
     for &eq in equity_curve {
-        if eq > peak { peak = eq; }
+        if eq > peak {
+            peak = eq;
+        }
         let dd = (peak - eq) / peak;
-        if dd > max_dd { max_dd = dd; }
+        if dd > max_dd {
+            max_dd = dd;
+        }
     }
 
     // Daily returns from equity curve
@@ -62,21 +90,49 @@ pub fn compute_portfolio_metrics(trade_pnls: &[f64], equity_curve: &[f64], initi
     }
 
     // Sharpe ratio
-    let mean_ret = if !daily_returns.is_empty() { daily_returns.iter().sum::<f64>() / daily_returns.len() as f64 } else { 0.0 };
+    let mean_ret = if !daily_returns.is_empty() {
+        daily_returns.iter().sum::<f64>() / daily_returns.len() as f64
+    } else {
+        0.0
+    };
     let std_ret = if daily_returns.len() > 1 {
-        let variance = daily_returns.iter().map(|r| (r - mean_ret).powi(2)).sum::<f64>() / (daily_returns.len() - 1) as f64;
+        let variance = daily_returns
+            .iter()
+            .map(|r| (r - mean_ret).powi(2))
+            .sum::<f64>()
+            / (daily_returns.len() - 1) as f64;
         variance.sqrt()
-    } else { 0.0001 };
-    let sharpe_ratio = if std_ret > 0.0 { 252.0_f64.sqrt() * mean_ret / std_ret } else { 0.0 };
+    } else {
+        0.0001
+    };
+    let sharpe_ratio = if std_ret > 0.0 {
+        252.0_f64.sqrt() * mean_ret / std_ret
+    } else {
+        0.0
+    };
 
     // Sortino ratio
-    let neg_returns: Vec<f64> = daily_returns.iter().filter(|&&r| r < 0.0).copied().collect();
+    let neg_returns: Vec<f64> = daily_returns
+        .iter()
+        .filter(|&&r| r < 0.0)
+        .copied()
+        .collect();
     let std_neg = if neg_returns.len() > 1 {
         let neg_mean = neg_returns.iter().sum::<f64>() / neg_returns.len() as f64;
-        let variance = neg_returns.iter().map(|r| (r - neg_mean).powi(2)).sum::<f64>() / (neg_returns.len() - 1) as f64;
+        let variance = neg_returns
+            .iter()
+            .map(|r| (r - neg_mean).powi(2))
+            .sum::<f64>()
+            / (neg_returns.len() - 1) as f64;
         variance.sqrt()
-    } else { std_ret };
-    let sortino_ratio = if std_neg > 0.0 { 252.0_f64.sqrt() * mean_ret / std_neg } else { 0.0 };
+    } else {
+        std_ret
+    };
+    let sortino_ratio = if std_neg > 0.0 {
+        252.0_f64.sqrt() * mean_ret / std_neg
+    } else {
+        0.0
+    };
 
     // VaR and CVaR from daily returns
     let var_95 = compute_var(&daily_returns, 0.95);
@@ -102,17 +158,26 @@ mod tests {
 
     #[test]
     fn test_var_basic() {
-        let returns = vec![-0.05, -0.03, -0.02, -0.01, 0.0, 0.01, 0.02, 0.03, 0.04, 0.05];
+        let returns = vec![
+            -0.05, -0.03, -0.02, -0.01, 0.0, 0.01, 0.02, 0.03, 0.04, 0.05,
+        ];
         let var = compute_var(&returns, 0.95);
         assert!(var > 0.0, "VaR should be positive: got {}", var);
     }
 
     #[test]
     fn test_cvar_greater_than_var() {
-        let returns = vec![-0.10, -0.08, -0.05, -0.02, 0.0, 0.01, 0.02, 0.03, 0.05, 0.08];
+        let returns = vec![
+            -0.10, -0.08, -0.05, -0.02, 0.0, 0.01, 0.02, 0.03, 0.05, 0.08,
+        ];
         let var = compute_var(&returns, 0.95);
         let cvar = compute_cvar(&returns, 0.95);
-        assert!(cvar >= var, "CVaR should be >= VaR: var={}, cvar={}", var, cvar);
+        assert!(
+            cvar >= var,
+            "CVaR should be >= VaR: var={}, cvar={}",
+            var,
+            cvar
+        );
     }
 
     #[test]

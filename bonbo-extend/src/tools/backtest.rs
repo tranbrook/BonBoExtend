@@ -263,6 +263,31 @@ impl BacktestPlugin {
                 let mut eng = bonbo_quant::engine::BacktestEngine::new(config, s);
                 eng.run(&candles)?
             }
+            "bollinger_bands" => {
+                let s = bonbo_quant::strategy::BollingerBandsStrategy::new(20, 2.0);
+                let mut eng = bonbo_quant::engine::BacktestEngine::new(config, s);
+                eng.run(&candles)?
+            }
+            "macd_crossover" => {
+                let s = bonbo_quant::strategy::MacdCrossoverStrategy::new(12, 26, 9);
+                let mut eng = bonbo_quant::engine::BacktestEngine::new(config, s);
+                eng.run(&candles)?
+            }
+            "momentum" => {
+                let s = bonbo_quant::strategy::MomentumStrategy::new(10, 5.0);
+                let mut eng = bonbo_quant::engine::BacktestEngine::new(config, s);
+                eng.run(&candles)?
+            }
+            "breakout" => {
+                let s = bonbo_quant::strategy::BreakoutStrategy::new(20);
+                let mut eng = bonbo_quant::engine::BacktestEngine::new(config, s);
+                eng.run(&candles)?
+            }
+            "ema_crossover" => {
+                let s = bonbo_quant::strategy::EmaCrossoverStrategy::new(12, 26);
+                let mut eng = bonbo_quant::engine::BacktestEngine::new(config, s);
+                eng.run(&candles)?
+            }
             _ => anyhow::bail!("Unknown strategy: {}", strategy_name),
         };
         Ok(report.format_report())

@@ -28,12 +28,18 @@ pub struct AlgoOrderResponse {
     /// Response message.
     #[serde(default)]
     pub msg: String,
+    /// Algo status (NEW, TRIGGERED, etc.) — present in v2 response.
+    #[serde(default, rename = "algoStatus")]
+    pub algo_status: String,
+    /// Order status — present in v2 response.
+    #[serde(default)]
+    pub status: String,
 }
 
 impl AlgoOrderResponse {
     /// Check if the order was successful.
     pub fn is_success(&self) -> bool {
-        self.code == "200"
+        self.code == "200" || self.algo_id > 0
     }
 }
 
@@ -125,9 +131,9 @@ impl AlgoOrdersClient {
 
         if close_position && quantity.is_none() {
             params.push("closePosition=true".to_string());
+        } else {
+            params.push("reduceOnly=true".to_string());
         }
-
-        params.push("reduceOnly=true".to_string());
 
         if let Some(wt) = working_type {
             params.push(format!("workingType={}", wt));
@@ -140,10 +146,11 @@ impl AlgoOrdersClient {
         if let Some(id) = client_algo_id {
             params.push(format!("clientAlgoId={}", id));
         } else {
+            let short_id = &uuid::Uuid::new_v4().as_simple().to_string()[..8];
             params.push(format!(
-                "clientAlgoId=bonbo_{}_{}",
+                "clientAlgoId=bb_{}_{}",
                 symbol.to_lowercase(),
-                uuid::Uuid::new_v4().as_simple()
+                short_id
             ));
         }
 
@@ -157,15 +164,13 @@ impl AlgoOrdersClient {
     pub async fn stop_loss(
         client: &FuturesRestClient,
         symbol: &str,
-        side: Side,
         trigger_price: Decimal,
+        side: Side,
         close_position: bool,
     ) -> anyhow::Result<AlgoOrderResponse> {
-        let client_id = format!(
-            "sl_{}_{}",
-            symbol.to_lowercase(),
-            uuid::Uuid::new_v4().as_simple()
-        );
+        // clientAlgoId max 36 chars: "sl_" + symbol(6) + "_" + short_id(8) = 18 chars
+        let short_id = &uuid::Uuid::new_v4().as_simple().to_string()[..8];
+        let client_id = format!("sl_{}_{}", symbol.to_lowercase(), short_id);
         Self::place_algo_order(
             client,
             symbol,
@@ -188,11 +193,8 @@ impl AlgoOrdersClient {
         trigger_price: Decimal,
         quantity: Decimal,
     ) -> anyhow::Result<AlgoOrderResponse> {
-        let client_id = format!(
-            "slp_{}_{}",
-            symbol.to_lowercase(),
-            uuid::Uuid::new_v4().as_simple()
-        );
+        let short_id = &uuid::Uuid::new_v4().as_simple().to_string()[..8];
+        let client_id = format!("slp_{}_{}", symbol.to_lowercase(), short_id);
         Self::place_algo_order(
             client,
             symbol,
@@ -211,15 +213,12 @@ impl AlgoOrdersClient {
     pub async fn take_profit(
         client: &FuturesRestClient,
         symbol: &str,
-        side: Side,
         trigger_price: Decimal,
+        side: Side,
         close_position: bool,
     ) -> anyhow::Result<AlgoOrderResponse> {
-        let client_id = format!(
-            "tp_{}_{}",
-            symbol.to_lowercase(),
-            uuid::Uuid::new_v4().as_simple()
-        );
+        let short_id = &uuid::Uuid::new_v4().as_simple().to_string()[..8];
+        let client_id = format!("tp_{}_{}", symbol.to_lowercase(), short_id);
         Self::place_algo_order(
             client,
             symbol,
@@ -242,11 +241,8 @@ impl AlgoOrdersClient {
         trigger_price: Decimal,
         quantity: Decimal,
     ) -> anyhow::Result<AlgoOrderResponse> {
-        let client_id = format!(
-            "tpp_{}_{}",
-            symbol.to_lowercase(),
-            uuid::Uuid::new_v4().as_simple()
-        );
+        let short_id = &uuid::Uuid::new_v4().as_simple().to_string()[..8];
+        let client_id = format!("tpp_{}_{}", symbol.to_lowercase(), short_id);
         Self::place_algo_order(
             client,
             symbol,
@@ -267,7 +263,7 @@ impl AlgoOrdersClient {
         symbol: &str,
         side: Side,
         callback_rate: Decimal,
-        close_position: bool,
+        quantity: Option<Decimal>,
         activate_price: Option<Decimal>,
     ) -> anyhow::Result<AlgoOrderResponse> {
         let mut params = vec![
@@ -280,20 +276,23 @@ impl AlgoOrdersClient {
             "priceProtect=TRUE".to_string(),
         ];
 
-        if close_position {
-            params.push("closePosition=true".to_string());
+        // TRAILING_STOP_MARKET on Algo API: must provide quantity (no closePosition support)
+        if let Some(qty) = quantity {
+            params.push(format!("quantity={}", qty));
         } else {
-            params.push("reduceOnly=true".to_string());
+            // Try closePosition as fallback (may fail on some Algo versions)
+            params.push("closePosition=true".to_string());
         }
 
         if let Some(ap) = activate_price {
             params.push(format!("activatePrice={}", ap));
         }
 
+        let short_id = &uuid::Uuid::new_v4().as_simple().to_string()[..8];
         params.push(format!(
             "clientAlgoId=trail_{}_{}",
             symbol.to_lowercase(),
-            uuid::Uuid::new_v4().as_simple()
+            short_id
         ));
 
         let query = params.join("&");

@@ -184,8 +184,8 @@ impl SagaExecutor {
             match AlgoOrdersClient::stop_loss(
                 client,
                 &params.symbol,
-                params.sl_side(),
                 params.stop_loss,
+                params.sl_side(),
                 true, // closePosition=true
             ).await {
                 Ok(resp) => {
@@ -219,8 +219,8 @@ impl SagaExecutor {
             match AlgoOrdersClient::take_profit(
                 client,
                 &params.symbol,
-                params.tp_side(),
                 params.take_profit,
+                params.tp_side(),
                 true, // closePosition=true
             ).await {
                 Ok(resp) => {
@@ -313,6 +313,8 @@ impl SagaExecutor {
             client_algo_id: format!("dry_sl_{}", params.symbol.to_lowercase()),
             code: "200".to_string(),
             msg: "Dry-run SL".to_string(),
+            algo_status: "NEW".to_string(),
+            status: "NEW".to_string(),
         }
     }
 
@@ -323,6 +325,8 @@ impl SagaExecutor {
             client_algo_id: format!("dry_tp_{}", params.symbol.to_lowercase()),
             code: "200".to_string(),
             msg: "Dry-run TP".to_string(),
+            algo_status: "NEW".to_string(),
+            status: "NEW".to_string(),
         }
     }
 

@@ -1670,3 +1670,392 @@ mod tests {
         assert_eq!(EnhancedMeanReversionStrategy::new().name(), "Enhanced Mean Reversion");
     }
 }
+
+// ─── Bollinger Band Bounce Strategy ────────────────────────────
+
+/// Bollinger Band Bounce Strategy (Mean-Reversion).
+///
+/// # Rules
+/// - **BUY**: Price touches lower BB + RSI < 35 + Hurst < 0.45 (mean-reverting)
+/// - **SELL**: Price touches upper BB + RSI > 65 + Hurst < 0.45
+/// - **EXIT**: Price reaches BB middle or opposite band
+/// - **SL**: 1.5×ATR from entry
+pub struct BbBounceStrategy {
+    bb: BollingerBands,
+    rsi: Rsi,
+    hurst: HurstExponent,
+    atr: Atr,
+    entry_price: Option<f64>,
+    stop_loss: Option<f64>,
+}
+
+impl BbBounceStrategy {
+    pub fn new() -> Self {
+        Self {
+            bb: BollingerBands::new(20, 2.0).expect("BB params valid"),
+            rsi: Rsi::new(14).expect("RSI(14) valid"),
+            hurst: HurstExponent::new(100).expect("Hurst(100) valid"),
+            atr: Atr::new(14).expect("ATR(14) valid"),
+            entry_price: None,
+            stop_loss: None,
+        }
+    }
+}
+
+impl Strategy for BbBounceStrategy {
+    fn name(&self) -> &str { "BB Bounce" }
+
+    fn on_bar(&mut self, ctx: &mut StrategyContext, candle: &OhlcvCandle) -> Vec<Order> {
+        let bb_val = self.bb.next(candle.close);
+        let rsi_val = self.rsi.next(candle.close);
+        let hurst_val = self.hurst.next(candle.close);
+        let atr_val = self.atr.next_hlc(candle.high, candle.low, candle.close);
+        let mut orders = Vec::new();
+        let symbol = "ASSET";
+
+        if let (Some(bb), Some(rsi), Some(atr)) = (bb_val, rsi_val, atr_val) {
+            let h = hurst_val.unwrap_or(0.5);
+
+            if !ctx.has_position(symbol) {
+                // Only trade in mean-reverting regime (Hurst < 0.45)
+                if h < 0.45 {
+                    // BUY: price at/below lower band + RSI oversold
+                    if candle.close <= bb.lower && rsi < 35.0 {
+                        let sl = candle.close - atr * 1.5;
+                        orders.push(Order {
+                        id: format!("ord-{}", ctx.bar_index),
+                        symbol: symbol.to_string(),
+                        side: OrderSide::Buy,
+                        order_type: OrderType::Market,
+                        quantity: ctx.equity * 0.95 / candle.close,
+                        price: None,
+                        stop_loss: None,
+                        take_profit: None,
+                        timestamp: candle.timestamp,
+                    });
+                        self.entry_price = Some(candle.close);
+                        self.stop_loss = Some(sl);
+                    }
+                    // SELL: price at/above upper band + RSI overbought
+                    else if candle.close >= bb.upper && rsi > 65.0 {
+                        let sl = candle.close + atr * 1.5;
+                        orders.push(Order {
+                        id: format!("ord-{}", ctx.bar_index),
+                        symbol: symbol.to_string(),
+                        side: OrderSide::Sell,
+                        order_type: OrderType::Market,
+                        quantity: ctx.equity * 0.95 / candle.close,
+                        price: None,
+                        stop_loss: None,
+                        take_profit: None,
+                        timestamp: candle.timestamp,
+                    });
+                        self.entry_price = Some(candle.close);
+                        self.stop_loss = Some(sl);
+                    }
+                }
+            } else if let Some(entry) = self.entry_price {
+                // Exit: price reaches BB middle or stop loss hit
+                let should_exit = if let Some(sl) = self.stop_loss {
+                    // Check both TP (middle band) and SL
+                    let position = ctx.positions.get(symbol);
+                    let is_long = position.map_or(false, |(_, _, side)| matches!(side, OrderSide::Buy));
+
+                    if is_long {
+                        candle.close >= bb.middle || candle.close <= sl
+                    } else {
+                        candle.close <= bb.middle || candle.close >= sl
+                    }
+                } else {
+                    candle.close >= bb.middle || candle.close <= bb.lower
+                };
+
+                if should_exit {
+                    let side = if ctx.positions.get(symbol).map_or(false, |(_, _, s)| matches!(s, OrderSide::Buy)) {
+                        OrderSide::Sell
+                    } else {
+                        OrderSide::Buy
+                    };
+                    orders.push(Order {
+                        id: format!("ord-exit-{}", ctx.bar_index),
+                        symbol: symbol.to_string(),
+                        side,
+                        order_type: OrderType::Market,
+                        quantity: 0.0,
+                        price: None,
+                        stop_loss: None,
+                        take_profit: None,
+                        timestamp: candle.timestamp,
+                    });
+                    self.entry_price = None;
+                    self.stop_loss = None;
+                }
+            }
+        }
+
+        orders
+    }
+}
+
+// ─── Hurst Regime-Switching Meta-Strategy ──────────────────────
+
+/// Hurst Regime-Switching Meta-Strategy.
+///
+/// Dynamically switches between trend-following and mean-reversion
+/// based on real-time Hurst Exponent estimation.
+///
+/// # Rules
+/// - **Hurst > 0.55** (Trending): Use ALMA crossover for entry/exit
+/// - **Hurst < 0.45** (Mean-Reverting): Use BB + RSI for entry/exit
+/// - **0.45 ≤ Hurst ≤ 0.55** (Random Walk): No trading — stay flat
+///
+/// # Stop Loss: Regime-adaptive ATR
+/// - Trending: 2.0× ATR (wider, let winners run)
+/// - Mean-Reverting: 1.5× ATR (tighter)
+///
+/// # Research Source
+/// Walk-forward Hurst optimization (Mroziewicz & Ślepaczuk, 2026):
+/// 50% drawdown reduction with regime-conditional strategies.
+pub struct HurstRegimeSwitchingStrategy {
+    // Trend-following components
+    fast_alma: Alma,
+    slow_alma: Alma,
+    // Mean-reversion components
+    bb: BollingerBands,
+    rsi: Rsi,
+    // Regime detection
+    hurst: HurstExponent,
+    hurst_short: HurstExponent,
+    // Risk management
+    atr: Atr,
+    // State
+    entry_price: Option<f64>,
+    stop_loss: Option<f64>,
+    prev_fast: Option<f64>,
+    prev_slow: Option<f64>,
+    current_regime: String,
+}
+
+impl HurstRegimeSwitchingStrategy {
+    pub fn new() -> Self {
+        Self {
+            fast_alma: Alma::default_params(10).expect("ALMA(10) valid"),
+            slow_alma: Alma::default_params(30).expect("ALMA(30) valid"),
+            bb: BollingerBands::new(20, 2.0).expect("BB valid"),
+            rsi: Rsi::new(14).expect("RSI(14) valid"),
+            hurst: HurstExponent::new(100).expect("Hurst(100) valid"),
+            hurst_short: HurstExponent::new(50).expect("Hurst(50) valid"),
+            atr: Atr::new(14).expect("ATR(14) valid"),
+            entry_price: None,
+            stop_loss: None,
+            prev_fast: None,
+            prev_slow: None,
+            current_regime: "Unknown".to_string(),
+        }
+    }
+}
+
+impl Strategy for HurstRegimeSwitchingStrategy {
+    fn name(&self) -> &str { "Hurst Regime-Switching" }
+
+    fn on_bar(&mut self, ctx: &mut StrategyContext, candle: &OhlcvCandle) -> Vec<Order> {
+        let fast = self.fast_alma.next(candle.close);
+        let slow = self.slow_alma.next(candle.close);
+        let bb_val = self.bb.next(candle.close);
+        let rsi_val = self.rsi.next(candle.close);
+        let h_long = self.hurst.next(candle.close);
+        let h_short = self.hurst_short.next(candle.close);
+        let atr_val = self.atr.next_hlc(candle.high, candle.low, candle.close);
+        let mut orders = Vec::new();
+        let symbol = "ASSET";
+
+        let h = h_long.or(h_short).unwrap_or(0.5);
+        self.current_regime = if h > 0.55 {
+            "Trending".to_string()
+        } else if h < 0.45 {
+            "MeanReverting".to_string()
+        } else {
+            "RandomWalk".to_string()
+        };
+
+        // Hurst divergence check — reduce position in transitions
+        let in_transition = match (h_long, h_short) {
+            (Some(long), Some(short)) => (long - short).abs() > 0.15,
+            _ => false,
+        };
+
+        if in_transition && ctx.has_position(symbol) {
+            // Exit during regime transitions
+            let side = if ctx.positions.get(symbol).map_or(false, |(_, _, s)| matches!(s, OrderSide::Buy)) {
+                OrderSide::Sell
+            } else {
+                OrderSide::Buy
+            };
+            orders.push(Order {
+                id: format!("ord-exit-{}", ctx.bar_index),
+                symbol: symbol.to_string(),
+                side,
+                order_type: OrderType::Market,
+                quantity: 0.0,
+                price: None,
+                stop_loss: None,
+                take_profit: None,
+                timestamp: candle.timestamp,
+            });
+            self.entry_price = None;
+            self.stop_loss = None;
+            return orders;
+        }
+
+        let atr_sl_mult = if h > 0.55 { 2.0 } else { 1.5 };
+
+        if !ctx.has_position(symbol) && !in_transition {
+            if h > 0.55 {
+                // TRENDING regime → ALMA crossover entry
+                if let (Some(f), Some(s), Some(pf), Some(ps)) = (fast, slow, self.prev_fast, self.prev_slow) {
+                    if pf <= ps && f > s {
+                        // Golden cross
+                        if let Some(atr) = atr_val {
+                            orders.push(Order {
+                        id: format!("ord-{}", ctx.bar_index),
+                        symbol: symbol.to_string(),
+                        side: OrderSide::Buy,
+                        order_type: OrderType::Market,
+                        quantity: ctx.equity * 0.9 / candle.close,
+                        price: None,
+                        stop_loss: None,
+                        take_profit: None,
+                        timestamp: candle.timestamp,
+                    });
+                            self.entry_price = Some(candle.close);
+                            self.stop_loss = Some(candle.close - atr * atr_sl_mult);
+                        }
+                    } else if pf >= ps && f < s {
+                        // Death cross → SHORT
+                        if let Some(atr) = atr_val {
+                            orders.push(Order {
+                        id: format!("ord-{}", ctx.bar_index),
+                        symbol: symbol.to_string(),
+                        side: OrderSide::Sell,
+                        order_type: OrderType::Market,
+                        quantity: ctx.equity * 0.9 / candle.close,
+                        price: None,
+                        stop_loss: None,
+                        take_profit: None,
+                        timestamp: candle.timestamp,
+                    });
+                            self.entry_price = Some(candle.close);
+                            self.stop_loss = Some(candle.close + atr * atr_sl_mult);
+                        }
+                    }
+                }
+            } else if h < 0.45 {
+                // MEAN-REVERTING regime → BB + RSI entry
+                if let (Some(bb), Some(rsi), Some(atr)) = (bb_val, rsi_val, atr_val) {
+                    if candle.close <= bb.lower && rsi < 30.0 {
+                        orders.push(Order {
+                        id: format!("ord-{}", ctx.bar_index),
+                        symbol: symbol.to_string(),
+                        side: OrderSide::Buy,
+                        order_type: OrderType::Market,
+                        quantity: ctx.equity * 0.9 / candle.close,
+                        price: None,
+                        stop_loss: None,
+                        take_profit: None,
+                        timestamp: candle.timestamp,
+                    });
+                        self.entry_price = Some(candle.close);
+                        self.stop_loss = Some(candle.close - atr * atr_sl_mult);
+                    } else if candle.close >= bb.upper && rsi > 70.0 {
+                        orders.push(Order {
+                        id: format!("ord-{}", ctx.bar_index),
+                        symbol: symbol.to_string(),
+                        side: OrderSide::Sell,
+                        order_type: OrderType::Market,
+                        quantity: ctx.equity * 0.9 / candle.close,
+                        price: None,
+                        stop_loss: None,
+                        take_profit: None,
+                        timestamp: candle.timestamp,
+                    });
+                        self.entry_price = Some(candle.close);
+                        self.stop_loss = Some(candle.close + atr * atr_sl_mult);
+                    }
+                }
+            }
+            // Random Walk → no entry
+        } else if ctx.has_position(symbol) {
+            // Exit logic: trailing stop or regime change
+            if let Some(sl) = self.stop_loss {
+                let is_long = ctx.positions.get(symbol).map_or(false, |(_, _, side)| matches!(side, OrderSide::Buy));
+                let hit_sl = if is_long { candle.close <= sl } else { candle.close >= sl };
+
+                if hit_sl {
+                    let side = if is_long { OrderSide::Sell } else { OrderSide::Buy };
+                    orders.push(Order {
+                        id: format!("ord-sl-{}", ctx.bar_index),
+                        symbol: symbol.to_string(),
+                        side,
+                        order_type: OrderType::Market,
+                        quantity: 0.0,
+                        price: None,
+                        stop_loss: None,
+                        take_profit: None,
+                        timestamp: candle.timestamp,
+                    });
+                    self.entry_price = None;
+                    self.stop_loss = None;
+                } else {
+                    // Trail stop in trending regime
+                    if h > 0.55 {
+                        if let Some(atr) = atr_val {
+                            let is_long = ctx.positions.get(symbol).map_or(false, |(_, _, side)| matches!(side, OrderSide::Buy));
+                            if is_long {
+                                let new_sl = candle.close - atr * atr_sl_mult;
+                                if new_sl > sl {
+                                    self.stop_loss = Some(new_sl);
+                                }
+                            } else {
+                                let new_sl = candle.close + atr * atr_sl_mult;
+                                if new_sl < sl {
+                                    self.stop_loss = Some(new_sl);
+                                }
+                            }
+                        }
+                    }
+                    // Mean-reverting: exit at BB middle
+                    if h < 0.45 {
+                        if let Some(bb) = bb_val {
+                            let is_long = ctx.positions.get(symbol).map_or(false, |(_, _, side)| matches!(side, OrderSide::Buy));
+                            let should_exit = if is_long {
+                                candle.close >= bb.middle
+                            } else {
+                                candle.close <= bb.middle
+                            };
+                            if should_exit {
+                                let side = if is_long { OrderSide::Sell } else { OrderSide::Buy };
+                                orders.push(Order {
+                                    id: format!("ord-exit-{}", ctx.bar_index),
+                                    symbol: symbol.to_string(),
+                                    side,
+                                    order_type: OrderType::Market,
+                                    quantity: 0.0,
+                                    price: None,
+                                    stop_loss: None,
+                                    take_profit: None,
+                                    timestamp: candle.timestamp,
+                                });
+                                self.entry_price = None;
+                                self.stop_loss = None;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        self.prev_fast = fast;
+        self.prev_slow = slow;
+        orders
+    }
+}

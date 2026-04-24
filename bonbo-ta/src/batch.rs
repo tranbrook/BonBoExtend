@@ -4,8 +4,14 @@
 //! - ALMA (Arnaud Legoux Moving Average) — best smoothing
 //! - SuperSmoother (Ehlers 2-pole Butterworth) — DSP noise filter
 //! - Hurst Exponent — regime detection (trending vs mean-reverting)
+//!   + Dual-window Hurst divergence detection
 //! - CMO (Chande Momentum Oscillator) — fast momentum
-//! - Laguerre RSI (Ehlers) — adaptive oscillator
+//! - Laguerre RSI (Ehlers) — adaptive oscillator with configurable gamma
+//!
+//! Quick Wins (v0.2):
+//! - ATR-based stop loss computation (regime-adaptive)
+//! - Hurst divergence detection (short-window vs long-window)
+//! - Dual LaguerreRSI (gamma=0.5 fast + gamma=0.8 slow)
 
 use crate::IncrementalIndicator;
 use crate::indicators::*;
@@ -34,12 +40,16 @@ pub struct FullAnalysis {
     pub alma30: Vec<Option<f64>>,
     /// SuperSmoother(20) — Ehlers 2-pole Butterworth filter
     pub super_smoother20: Vec<Option<f64>>,
-    /// Hurst Exponent (100-bar rolling window)
+    /// Hurst Exponent (100-bar rolling window, long-term)
     pub hurst: Vec<Option<f64>>,
+    /// Hurst Exponent (50-bar rolling window, short-term) — for divergence detection
+    pub hurst_short: Vec<Option<f64>>,
     /// CMO(14) — Chande Momentum Oscillator
     pub cmo14: Vec<Option<f64>>,
-    /// Laguerre RSI (gamma=0.8) — Ehlers adaptive oscillator
+    /// Laguerre RSI (gamma=0.8) — Ehlers adaptive oscillator (slow/smooth)
     pub laguerre_rsi: Vec<Option<f64>>,
+    /// Laguerre RSI (gamma=0.5) — responsive version (fast), avoids flat-lining at 1.0
+    pub laguerre_rsi_fast: Vec<Option<f64>>,
 }
 
 /// Compute all indicators (traditional + Financial-Hacker) over a slice of close prices.
@@ -59,8 +69,10 @@ pub fn compute_full_analysis(closes: &[f64]) -> FullAnalysis {
     let mut alma30_ind = Alma::default_params(30).unwrap();
     let mut ss20_ind = SuperSmoother::new(20).unwrap();
     let mut hurst_ind = HurstExponent::new(100).unwrap();
+    let mut hurst_short_ind = HurstExponent::new(50).unwrap(); // QW2: short-window
     let mut cmo14_ind = Cmo::new(14).unwrap();
-    let mut laguerre_rsi_ind = LaguerreRsi::default_params().unwrap();
+    let mut laguerre_rsi_ind = LaguerreRsi::new(0.8).unwrap(); // slow/smooth (original)
+    let mut laguerre_rsi_fast_ind = LaguerreRsi::new(0.5).unwrap(); // QW3: fast/responsive
 
     let mut sma20 = Vec::with_capacity(n);
     let mut ema12 = Vec::with_capacity(n);
@@ -72,8 +84,10 @@ pub fn compute_full_analysis(closes: &[f64]) -> FullAnalysis {
     let mut alma30 = Vec::with_capacity(n);
     let mut super_smoother20 = Vec::with_capacity(n);
     let mut hurst = Vec::with_capacity(n);
+    let mut hurst_short = Vec::with_capacity(n); // QW2
     let mut cmo14 = Vec::with_capacity(n);
     let mut laguerre_rsi = Vec::with_capacity(n);
+    let mut laguerre_rsi_fast = Vec::with_capacity(n); // QW3
 
     for &c in closes {
         sma20.push(sma20_ind.next(c));
@@ -86,8 +100,10 @@ pub fn compute_full_analysis(closes: &[f64]) -> FullAnalysis {
         alma30.push(alma30_ind.next(c));
         super_smoother20.push(ss20_ind.next(c));
         hurst.push(hurst_ind.next(c));
+        hurst_short.push(hurst_short_ind.next(c)); // QW2
         cmo14.push(cmo14_ind.next(c));
         laguerre_rsi.push(laguerre_rsi_ind.next(c));
+        laguerre_rsi_fast.push(laguerre_rsi_fast_ind.next(c)); // QW3
     }
 
     FullAnalysis {
@@ -103,8 +119,10 @@ pub fn compute_full_analysis(closes: &[f64]) -> FullAnalysis {
         alma30,
         super_smoother20,
         hurst,
+        hurst_short,
         cmo14,
         laguerre_rsi,
+        laguerre_rsi_fast,
     }
 }
 
@@ -126,8 +144,14 @@ pub fn detect_market_regime(candles: &[OhlcvCandle]) -> MarketRegime {
     let closes: Vec<f64> = candles.iter().map(|c| c.close).collect();
 
     // ── Primary: Hurst Exponent (if enough data) ──
+    // Use last 101 closes for Hurst to match the incremental window used
+    // in compute_full_analysis (HurstExponent::new(100) keeps window+1 = 101 prices).
+    // Using all data would produce different Hurst values, causing
+    // inconsistency between analyze_indicators and detect_market_regime.
+    let start = n.saturating_sub(101);
+    let hurst_closes: Vec<f64> = closes[start..].to_vec();
     if n >= 100
-        && let Some(h) = HurstExponent::compute(&closes) {
+        && let Some(h) = HurstExponent::compute(&hurst_closes) {
             // Compute volatility for additional context
             let volatility_pct = compute_volatility_pct(candles);
 
@@ -267,6 +291,63 @@ pub fn get_support_resistance(highs: &[f64], lows: &[f64]) -> (Vec<f64>, Vec<f64
     (supports, resistances)
 }
 
+/// QW1: Compute ATR-based stop loss and take profit levels.
+///
+/// Returns (stop_loss, take_profit) for a LONG position.
+/// The ATR multiplier adapts to the market regime:
+/// - Trending (H > 0.55): wider stops (2.0× ATR) — let winners run
+/// - Mean-Reverting (H < 0.45): tighter stops (1.5× ATR)
+/// - Random Walk: widest stops (2.5× ATR) — avoid noise
+///
+/// Returns `None` if not enough candle data or ATR not available.
+pub fn compute_atr_stops(
+    candles: &[OhlcvCandle],
+    price: f64,
+    hurst: Option<f64>,
+    atr_period: usize,
+) -> Option<(f64, f64)> {
+    if candles.len() < atr_period + 1 || price <= 0.0 {
+        return None;
+    }
+
+    // Compute True Range series
+    let mut tr_values: Vec<f64> = Vec::with_capacity(candles.len() - 1);
+    for i in 1..candles.len() {
+        let high = candles[i].high;
+        let low = candles[i].low;
+        let prev_close = candles[i - 1].close;
+        let tr = (high - low)
+            .max((high - prev_close).abs())
+            .max((low - prev_close).abs());
+        tr_values.push(tr);
+    }
+
+    if tr_values.len() < atr_period {
+        return None;
+    }
+
+    // Wilder's smoothing for ATR
+    let first_sma: f64 = tr_values[..atr_period].iter().sum::<f64>() / atr_period as f64;
+    let mut atr = first_sma;
+    let alpha = 1.0 / atr_period as f64;
+    for tr in &tr_values[atr_period..] {
+        atr = atr * (1.0 - alpha) + tr * alpha;
+    }
+
+    // Regime-adaptive multiplier
+    let mult = match hurst {
+        Some(h) if h > 0.55 => 2.0,  // Trending — wider stops
+        Some(h) if h < 0.45 => 1.5,  // Mean-Reverting — tighter
+        Some(_) => 2.5,              // Random Walk — widest
+        None => 2.0,                 // Default
+    };
+
+    let stop_loss = price - atr * mult;
+    let take_profit = price + atr * mult; // R:R = 1:1
+
+    Some((stop_loss, take_profit))
+}
+
 /// Generate trading signals from indicator analysis.
 ///
 /// Uses Financial-Hacker.com methodology:
@@ -277,17 +358,32 @@ pub fn get_support_resistance(highs: &[f64], lows: &[f64]) -> (Vec<f64>, Vec<f64
 /// 5. Laguerre RSI for adaptive overbought/oversold detection
 /// 6. CMO for fast momentum signals
 pub fn generate_signals(analysis: &FullAnalysis, _price: f64) -> Vec<Signal> {
-    let mut signals = Vec::new();
     let now = chrono::Utc::now().timestamp();
+    let market_char = classify_market_character(analysis);
+    let mut signals = generate_traditional_signals(analysis, now, &market_char);
+    signals.extend(generate_financial_hacker_signals(analysis, now, &market_char));
+    signals
+}
 
-    // ── Step 1: Determine market character from Hurst ──
+/// Classify market regime using Hurst Exponent.
+///
+/// - H > 0.55 → Trending (use trend-following strategies)
+/// - H < 0.45 → Mean-reverting (use mean-reversion strategies)
+/// - Otherwise → Random walk (avoid trading)
+fn classify_market_character(analysis: &FullAnalysis) -> MarketCharacter {
     let hurst_val = analysis.hurst.last().and_then(|v| *v);
-    let market_char = match hurst_val {
+    match hurst_val {
         Some(h) if h > 0.55 => MarketCharacter::Trending,
         Some(h) if h < 0.45 => MarketCharacter::MeanReverting,
         Some(_) => MarketCharacter::RandomWalk,
         None => MarketCharacter::Unknown,
-    };
+    }
+}
+
+/// Generate signals from traditional indicators: RSI, MACD, Bollinger Bands,
+/// SMA/EMA crossover, ATR, and ADX.
+fn generate_traditional_signals(analysis: &FullAnalysis, now: i64, market_char: &MarketCharacter) -> Vec<Signal> {
+    let mut signals = Vec::new();
 
     // ── Step 2: Traditional indicators ──
 
@@ -424,6 +520,19 @@ pub fn generate_signals(analysis: &FullAnalysis, _price: f64) -> Vec<Signal> {
         }
     }
 
+
+    signals
+}
+
+/// Generate signals from Financial-Hacker.com advanced indicators:
+/// ALMA crossover, SuperSmoother, CMO, Laguerre RSI, and Hurst confirmation.
+fn generate_financial_hacker_signals(
+    analysis: &FullAnalysis,
+    now: i64,
+    market_char: &MarketCharacter,
+) -> Vec<Signal> {
+    let mut signals = Vec::new();
+
     // ── Step 3: Financial-Hacker.com indicators ──
 
     // ALMA crossover — better than EMA crossover (Financial-Hacker #1 smoothing)
@@ -517,13 +626,42 @@ pub fn generate_signals(analysis: &FullAnalysis, _price: f64) -> Vec<Signal> {
     }
 
     // Hurst Exponent — regime signal (informational, affects other indicator weights)
+    // Hurst tells us IF the market is trending, not the DIRECTION.
+    // Use price vs SMA20 to determine direction when Hurst indicates trending.
     if let Some(Some(h)) = analysis.hurst.last() {
+        // Determine trend direction from price vs SMA20
+        let sma20_val = analysis.sma20.last().and_then(|v| *v);
+        let price_vs_sma = match sma20_val {
+            Some(sma) if sma > 0.0 => {
+                // Use the last close price (input to the last indicator tick)
+                // Approximate from EMA12 which tracks price closely
+                let last_price = analysis.ema12.last().and_then(|v| *v).unwrap_or(sma);
+                (last_price - sma) / sma
+            }
+            _ => 0.0,
+        };
+
         let (sig_type, confidence, reason) = if *h > 0.55 {
-            (
-                SignalType::Buy,
-                0.4,
-                format!("Hurst({:.2}) > 0.55 → Trending (use trend-following)", h),
-            )
+            // Trending market — direction depends on price vs SMA
+            if price_vs_sma > 0.01 {
+                (
+                    SignalType::Buy,
+                    0.4,
+                    format!("Hurst({:.2}) > 0.55 → Trending UP (use trend-following LONG)", h),
+                )
+            } else if price_vs_sma < -0.01 {
+                (
+                    SignalType::Sell,
+                    0.4,
+                    format!("Hurst({:.2}) > 0.55 → Trending DOWN (use trend-following SHORT)", h),
+                )
+            } else {
+                (
+                    SignalType::Neutral,
+                    0.3,
+                    format!("Hurst({:.2}) > 0.55 → Trending but direction unclear", h),
+                )
+            }
         } else if *h < 0.45 {
             (
                 SignalType::Neutral,
@@ -544,33 +682,72 @@ pub fn generate_signals(analysis: &FullAnalysis, _price: f64) -> Vec<Signal> {
             source: "Hurst(100)".to_string(),
             timestamp: now,
         });
+
+        // QW2: Hurst divergence signal (short-window vs long-window)
+        if let Some(Some(h_short)) = analysis.hurst_short.last() {
+            let divergence = (h - h_short).abs();
+            if divergence > 0.15 {
+                // Significant divergence → regime transition
+                let (div_type, div_conf, div_reason) = if h_short > h {
+                    // Short-term Hurst rising → trend emerging
+                    (
+                        SignalType::Buy,
+                        0.35,
+                        format!(
+                            "Hurst divergence: short({:.2}) > long({:.2}) → trend emerging, increase confidence",
+                            h_short, h
+                        ),
+                    )
+                } else {
+                    // Short-term Hurst falling → trend fading
+                    (
+                        SignalType::Sell,
+                        0.35,
+                        format!(
+                            "Hurst divergence: short({:.2}) < long({:.2}) → trend fading, reduce exposure",
+                            h_short, h
+                        ),
+                    )
+                };
+                signals.push(Signal {
+                    signal_type: div_type,
+                    confidence: div_conf,
+                    reason: div_reason,
+                    source: "HurstDivergence".to_string(),
+                    timestamp: now,
+                });
+            }
+        }
     }
 
     // CMO (Chande Momentum Oscillator) — faster than RSI
     if let Some(Some(cmo)) = analysis.cmo14.last() {
+        // CMO: <-50 oversold (extreme), <-20 mildly bearish momentum (NOT buy signal)
+        // CMO measures raw momentum — negative means prices declining.
+        // Only extreme readings (-50, +50) are contrarian signals.
         let (sig_type, confidence, reason) = if *cmo < -50.0 {
             (
                 SignalType::Buy,
                 0.65,
-                format!("CMO({:.1}) extremely oversold (< -50)", cmo),
+                format!("CMO({:.1}) extremely oversold (< -50) → contrarian BUY", cmo),
             )
         } else if *cmo > 50.0 {
             (
                 SignalType::Sell,
                 0.65,
-                format!("CMO({:.1}) extremely overbought (> 50)", cmo),
-            )
-        } else if *cmo < -20.0 {
-            (
-                SignalType::Buy,
-                0.4,
-                format!("CMO({:.1}) bearish momentum weakening", cmo),
+                format!("CMO({:.1}) extremely overbought (> 50) → contrarian SELL", cmo),
             )
         } else if *cmo > 20.0 {
             (
+                SignalType::Buy,
+                0.3,
+                format!("CMO({:.1}) bullish momentum zone", cmo),
+            )
+        } else if *cmo < -20.0 {
+            (
                 SignalType::Sell,
-                0.4,
-                format!("CMO({:.1}) bullish momentum weakening", cmo),
+                0.3,
+                format!("CMO({:.1}) bearish momentum zone", cmo),
             )
         } else {
             (
@@ -590,27 +767,35 @@ pub fn generate_signals(analysis: &FullAnalysis, _price: f64) -> Vec<Signal> {
         }
     }
 
-    // Laguerre RSI — Ehlers adaptive oscillator
-    if let Some(Some(lrsi)) = analysis.laguerre_rsi.last() {
-        let (sig_type, confidence, reason) = if *lrsi < 0.2 {
+    // Laguerre RSI — Ehlers adaptive oscillator (QW3: dual gamma)
+    // Use fast (gamma=0.5) as primary signal — more responsive, less flat-lining
+    // Use slow (gamma=0.8) as confirmation — original smoothing
+    let lrsi_fast_val = analysis.laguerre_rsi_fast.last().and_then(|v| *v);
+    let lrsi_slow_val = analysis.laguerre_rsi.last().and_then(|v| *v);
+
+    // Prefer fast version for signal generation (avoids 1.0 flat-line issue)
+    let primary_lrsi = lrsi_fast_val.or(lrsi_slow_val);
+
+    if let Some(lrsi) = primary_lrsi {
+        let (sig_type, confidence, reason): (SignalType, f64, String) = if lrsi < 0.2 {
             (
                 SignalType::Buy,
                 0.7,
                 format!("LaguerreRSI({:.2}) oversold (<0.2)", lrsi),
             )
-        } else if *lrsi > 0.8 {
+        } else if lrsi > 0.8 {
             (
                 SignalType::Sell,
                 0.7,
                 format!("LaguerreRSI({:.2}) overbought (>0.8)", lrsi),
             )
-        } else if *lrsi < 0.3 {
+        } else if lrsi < 0.3 {
             (
                 SignalType::Buy,
                 0.4,
                 format!("LaguerreRSI({:.2}) approaching oversold", lrsi),
             )
-        } else if *lrsi > 0.7 {
+        } else if lrsi > 0.7 {
             (
                 SignalType::Sell,
                 0.4,
@@ -623,12 +808,28 @@ pub fn generate_signals(analysis: &FullAnalysis, _price: f64) -> Vec<Signal> {
                 format!("LaguerreRSI({:.2}) neutral", lrsi),
             )
         };
-        if confidence > 0.0 {
+
+        // QW3: Boost confidence if both fast AND slow agree
+        let (final_conf, final_reason) = match (lrsi_fast_val, lrsi_slow_val) {
+            (Some(fast), Some(slow)) => {
+                let both_agree = (fast > 0.8 && slow > 0.7) || (fast < 0.2 && slow < 0.3);
+                if both_agree && confidence > 0.0 {
+                    (confidence.min(0.85_f64), format!("{} [fast={:.2}, slow={:.2} confirm]", reason, fast, slow))
+                } else if (fast - slow).abs() > 0.3 {
+                    (confidence * 0.6, format!("{} [divergence: fast={:.2}, slow={:.2} — reduced confidence]", reason, fast, slow))
+                } else {
+                    (confidence, reason)
+                }
+            }
+            _ => (confidence, reason),
+        };
+
+        if final_conf > 0.0 {
             signals.push(Signal {
                 signal_type: sig_type,
-                confidence,
-                reason,
-                source: "LaguerreRSI(0.8)".to_string(),
+                confidence: final_conf,
+                reason: final_reason,
+                source: "LaguerreRSI".to_string(),
                 timestamp: now,
             });
         }

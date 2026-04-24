@@ -15,6 +15,7 @@
 //! Usage: cargo run -p bonbo-extend --example advanced_scan
 
 use anyhow::Result;
+use bonbo_data::{self as bonbo_data};
 use bonbo_data::MarketDataFetcher;
 use bonbo_risk::var::compute_var;
 use bonbo_ta::OhlcvCandle;

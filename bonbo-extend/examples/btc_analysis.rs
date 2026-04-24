@@ -11,6 +11,7 @@
 
 use anyhow::{Context, Result};
 
+use bonbo_data::{self as bonbo_data};
 use bonbo_data::MarketDataFetcher;
 use bonbo_quant::{
     BacktestConfig, BacktestEngine, BollingerBandsStrategy, BreakoutStrategy, FillModel,
@@ -86,7 +87,7 @@ async fn main() -> Result<()> {
     println!("  ✅ Fetched {} daily candles", raw_candles.len());
 
     // Convert to OhlcvCandle for TA/backtest engines
-    let daily_candles = to_ohlcv(&raw_candles);
+    let daily_candles = bonbo_data::to_ohlcv(&raw_candles);
 
     if let Some(latest) = raw_candles.last() {
         sub_sep("Current Market Snapshot");

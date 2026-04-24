@@ -31,12 +31,13 @@ def api_call(endpoint, params=""):
         capture_output=True, text=True)
     return json.loads(r.stdout)
 
-ENTRY_ID = 18928261846
-SL_ID = 3000001310414864
-TP_ID = 3000001310417660
+ENTRY_ID = 18931966754
+SL_ID = 3000001313883777
+TP_ID = 3000001313883927
 ENTRY_P = 4.55
-SL_P = 4.20
+SL_P = 4.35
 TP_P = 5.10
+QTY = 418
 
 last_status = None
 last_price = 0
@@ -64,14 +65,19 @@ while True:
             print(f"  ⏳ [{now}] ORDI=${price:.4f} | {emoji} {dist:+.2f}% | {trail} → ${ENTRY_P} | SL:${SL_P} TP:${TP_P}", flush=True)
         
         elif status == 'FILLED' and last_status != 'FILLED':
-            print(f"\n  ✅✅✅ [{now}] ENTRY FILLED! 122 ORDI @ ${ENTRY_P}")
+            print(f"\n  ✅✅✅ [{now}] ENTRY FILLED! {QTY} ORDI @ ${ENTRY_P}")
             print(f"  🛡️ SL @ ${SL_P} (Algo #{SL_ID})")
             print(f"  🎯 TP @ ${TP_P} (Algo #{TP_ID})")
             print()
         
         elif status in ('CANCELED','CANCELLED','EXPIRED'):
-            print(f"\n  ❌ [{now}] Entry {status}. Monitor dừng.")
-            break
+            # Check if it's the OLD order being reported
+            if ENTRY_ID == 18931966754:
+                print(f"\n  ❌ [{now}] Entry {status}. Monitor dừng.")
+                break
+            else:
+                print(f"\n  ⚠️ [{now}] Stale order detected, skipping...")
+                status = 'UNKNOWN'
         
         if status == 'FILLED':
             pos = api_call("/fapi/v2/positionRisk", "symbol=ORDIUSDT")
@@ -80,7 +86,7 @@ while True:
                 if amt != 0:
                     pnl = float(pos[0]['unRealizedProfit'])
                     liq = float(pos[0].get('liquidationPrice', 0))
-                    pnl_pct = (pnl / (ENTRY_P * 122)) * 100
+                    pnl_pct = (pnl / (ENTRY_P * QTY)) * 100
                     e = "🟢" if pnl >= 0 else "🔴"
                     sl_dist = ((price - SL_P)/price)*100
                     tp_dist = ((TP_P - price)/price)*100

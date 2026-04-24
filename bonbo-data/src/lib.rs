@@ -7,5 +7,5 @@ pub mod websocket;
 
 pub use cache::DataCache;
 pub use fetcher::{MarketDataFetcher, parse_klines_response};
-pub use models::{DataResult, DataTimeFrame, FetchRequest, MarketDataCandle};
+pub use models::{DataResult, DataTimeFrame, FetchRequest, MarketDataCandle, to_ohlcv};
 pub use websocket::{RealtimeKline, RealtimeTick, WebSocketStream};

@@ -255,6 +255,7 @@ impl NewOrderRequest {
     }
 
     /// Set working type.
+    #[allow(dead_code)] // Public API — may be used by external consumers
     pub fn with_working_type(mut self, wt: WorkingType) -> Self {
         self.working_type = Some(wt);
         self
@@ -314,11 +315,17 @@ impl NewOrderRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FuturesBalance {
     pub asset: String,
+    #[serde(default)]
     pub balance: Decimal,
+    #[serde(default)]
     pub cross_wallet_balance: Decimal,
+    #[serde(default)]
     pub cross_un_pnl: Decimal,
+    #[serde(default)]
     pub available_balance: Decimal,
+    #[serde(default)]
     pub max_withdraw_amount: Decimal,
+    #[serde(default)]
     pub margin_available: bool,
 }
 
@@ -523,8 +530,11 @@ pub struct WsOrderUpdate {
 /// Leverage settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Leverage {
+    #[serde(default)]
     pub leverage: i32,
+    #[serde(default)]
     pub symbol: String,
+    #[serde(default)]
     pub max_notional_value: Decimal,
 }
 

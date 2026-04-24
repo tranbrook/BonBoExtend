@@ -83,6 +83,8 @@ pub struct Ema {
     value: Option<f64>,
     count: usize,
     wilders: bool,
+    /// Seed accumulator: collects initial values for SMA seeding.
+    seed_sum: f64,
 }
 
 impl Ema {
@@ -97,6 +99,7 @@ impl Ema {
             value: None,
             count: 0,
             wilders: false,
+            seed_sum: 0.0,
         })
     }
 
@@ -112,6 +115,7 @@ impl Ema {
             value: None,
             count: 0,
             wilders: true,
+            seed_sum: 0.0,
         })
     }
 
@@ -130,10 +134,15 @@ impl IncrementalIndicator for Ema {
 
         match self.value {
             None => {
-                // First value: seed with the input
-                self.value = Some(input);
+                // Accumulate values for SMA seeding (standard approach).
+                // TA-Lib and TradingView seed EMA with SMA of first `period` values,
+                // NOT just the first value. This gives accurate EMA from the start.
+                self.seed_sum += input;
                 if self.count >= self.period {
-                    return self.value;
+                    // Seed EMA with SMA of first `period` values
+                    let seed = self.seed_sum / self.period as f64;
+                    self.value = Some(seed);
+                    return Some(seed);
                 }
                 None
             }
@@ -148,6 +157,7 @@ impl IncrementalIndicator for Ema {
     fn reset(&mut self) {
         self.value = None;
         self.count = 0;
+        self.seed_sum = 0.0;
     }
 
     fn is_ready(&self) -> bool {
@@ -192,11 +202,17 @@ mod tests {
     fn test_ema_standard() {
         let mut ema = Ema::new(3).unwrap();
         // EMA(3): alpha = 2/(3+1) = 0.5
-        ema.next(10.0); // seed = 10.0
-        let v2 = ema.next(20.0).unwrap(); // 0.5*20 + 0.5*10 = 15.0
-        assert_relative_eq!(v2, 15.0);
-        let v3 = ema.next(30.0).unwrap(); // 0.5*30 + 0.5*15 = 22.5
-        assert_relative_eq!(v3, 22.5);
+        // New behavior: seeds with SMA of first 3 values
+        let v1 = ema.next(10.0); // accumulating seed
+        assert!(v1.is_none()); // not ready yet
+        let v2 = ema.next(20.0); // accumulating seed
+        assert!(v2.is_none()); // not ready yet
+        let v3 = ema.next(30.0); // seed = SMA(10+20+30)/3 = 20.0
+        assert_relative_eq!(v3.unwrap(), 20.0);
+        let v4 = ema.next(40.0); // 0.5*40 + 0.5*20 = 30.0
+        assert_relative_eq!(v4.unwrap(), 30.0);
+        let v5 = ema.next(50.0); // 0.5*50 + 0.5*30 = 40.0
+        assert_relative_eq!(v5.unwrap(), 40.0);
     }
 
     #[test]

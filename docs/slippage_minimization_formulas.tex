@@ -1,0 +1,523 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{geometry}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{tcolorbox}
+\usepackage{enumitem}
+
+\geometry{margin=1in}
+\definecolor{bonboblue}{RGB}{0,90,160}
+
+\tcbuselibrary{breakable}
+\newtcolorbox{formulabox}[1][]{
+  colback=blue!3!white,
+  colframe=bonboblue!80!black,
+  fonttitle=\bfseries,
+  breakable,
+  #1
+}
+
+\title{\textbf{Slippage Minimization: Mathematical Formulas} \\[0.3em]
+\large BonBoExtend Execution Engine — Formal Specification}
+\author{BonBo Execution Engine v1.0}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+%════════════════════════════════════════════════════════════════
+\section{Square-Root Market Impact Model}
+%════════════════════════════════════════════════════════════════
+
+The core impact model follows the empirically-validated \textbf{square-root law}:
+
+\begin{formulabox}[title={\S1.1 — Temporary Impact (Square-Root Law)}]
+Let $Q$ be the order notional (USD), $V$ the average daily volume, $\sigma$ the daily volatility, and $\eta$ the temporary impact coefficient. Then:
+\begin{equation}
+  \mathcal{I}_{\text{temp}} = \eta \cdot \sigma \cdot \sqrt{\frac{Q}{V}} \times 10{,}000 \quad \text{(bps)}
+\end{equation}
+where $\sqrt{Q/V}$ is the \textbf{participation rate} square root. This is the dominant component of market impact for large orders.
+\end{formulabox}
+
+\begin{formulabox}[title={\S1.2 — Permanent Impact (Linear Model)}]
+The non-revertible permanent impact is linear in participation rate, with coefficient $\gamma$:
+\begin{equation}
+  \mathcal{I}_{\text{perm}} = \gamma \cdot \frac{Q}{V} \times 10{,}000 \quad \text{(bps)}
+\end{equation}
+Typically $\gamma \ll \eta$, so permanent impact is much smaller than temporary.
+\end{formulabox}
+
+\begin{formulabox}[title={\S1.3 — Total Market Impact}]
+\begin{equation}
+  \mathcal{I}_{\text{total}} = \underbrace{\eta \cdot \sigma \cdot \sqrt{\frac{Q}{V}}}_{\text{temporary}} + \underbrace{\gamma \cdot \frac{Q}{V}}_{\text{permanent}} \quad \text{(bps)}
+\end{equation}
+\end{formulabox}
+
+\begin{formulabox}[title={\S1.4 — Risk-Adjusted Cost (CVaR Penalty)}]
+With risk aversion parameter $\lambda$:
+\begin{equation}
+  \mathcal{C}_{\text{risk}} = \mathcal{I}_{\text{total}} + f_{\text{fee}} + \underbrace{\lambda \cdot \sigma \cdot \sqrt{\frac{Q}{V}} \times 5{,}000}_{\text{CVaR penalty}} \quad \text{(bps)}
+\end{equation}
+where $f_{\text{fee}}$ is the taker fee rate in bps.
+\end{formulabox}
+
+\begin{formulabox}[title={\S1.5 — Calibrated Parameters}]
+\begin{center}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Symbol} & $\sigma$ & $\eta$ & $\gamma$ & $V_{\text{daily}}$ \\
+\midrule
+BTCUSDT  & 0.025 & 0.15 & 0.01 & \$5B  \\
+ETHUSDT  & 0.030 & 0.20 & 0.015 & \$2B \\
+SOLUSDT  & 0.050 & 0.30 & 0.025 & \$500M \\
+SEIUSDT  & 0.060 & 0.40 & 0.035 & \$100M \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{formulabox}
+
+
+%════════════════════════════════════════════════════════════════
+\section{Almgren-Chriss Optimal Execution}
+%════════════════════════════════════════════════════════════════
+
+\begin{formulabox}[title={\S2.1 — Urgency Parameter}]
+The urgency (or ``trading rate'') parameter $\kappa$ balances trading cost against timing risk:
+\begin{equation}
+  \kappa = \sqrt{\frac{\lambda \cdot \sigma^2}{\eta}}
+\end{equation}
+where $\lambda$ is risk aversion, $\sigma$ is volatility, and $\eta$ is the temporary impact coefficient.
+\end{formulabox}
+
+\begin{formulabox}[title={\S2.2 — Optimal Execution Time}]
+\begin{equation}
+  T^{*} = \sqrt{\frac{3\eta}{\lambda \cdot \sigma^2}} \cdot \left(1 + 100 \cdot \frac{Q}{V}\right) \quad \text{(hours)}
+\end{equation}
+This is the classical Almgren-Chiss result scaled by participation rate for crypto markets. Clamped to $[1\text{min},\; 8\text{h}]$.
+\end{formulabox}
+
+\begin{formulabox}[title={\S2.3 — Optimal Trading Trajectory}]
+The fraction of total quantity remaining at time $t$ in the execution window $[0, T]$:
+\begin{equation}
+  x(t) = \frac{\sinh\!\bigl(\kappa(T - t)\bigr)}{\sinh(\kappa T)}
+\end{equation}
+This gives a \textbf{front-loaded} trajectory: faster execution early, slower later.
+\end{formulabox}
+
+\begin{formulabox}[title={\S2.4 — Slice Fractions}]
+For $N$ slices over execution time $T$, the $i$-th slice fraction is:
+\begin{equation}
+  f_i = x(t_i) - x(t_{i+1}) = \frac{\sinh\!\bigl(\kappa(T - t_i)\bigr) - \sinh\!\bigl(\kappa(T - t_{i+1})\bigr)}{\sinh(\kappa T)}
+\end{equation}
+where $t_i = \frac{i}{N} \cdot T$. Each slice quantity is $q_i = f_i \cdot Q_{\text{total}}$.
+
+\vspace{0.5em}
+\textbf{Properties:}
+\begin{itemize}[nosep]
+  \item $f_0 > f_1 > \cdots > f_{N-1}$: front-loaded (largest slices first)
+  \item $\sum_{i=0}^{N-1} f_i = 1$: complete execution
+  \item As $\kappa \to 0$: $f_i \to 1/N$ (uniform TWAP-like schedule)
+  \item As $\kappa \to \infty$: $f_0 \to 1$ (immediate execution)
+\end{itemize}
+\end{formulabox}
+
+
+%════════════════════════════════════════════════════════════════
+\section{Implementation Shortfall Decomposition}
+%════════════════════════════════════════════════════════════════
+
+\begin{formulabox}[title={\S3.1 — IS Decomposition}]
+\begin{equation}
+  \text{IS} = \underbrace{\eta \sigma \sqrt{\frac{Q}{V}}}_{\text{temporary impact}} + \underbrace{\gamma \frac{Q}{V}}_{\text{permanent impact}} + \underbrace{\sigma \sqrt{\frac{T}{24}}}_{\text{timing risk}} + \underbrace{f_{\text{fee}}}_{\text{fees}}
+\end{equation}
+All terms in bps.
+\end{formulabox}
+
+\begin{formulabox}[title={\S3.2 — IS at Confidence Intervals}]
+\begin{align}
+  \text{IS}_{95\%} &= \mathcal{I}_{\text{expected}} + 1.645 \cdot \sigma\sqrt{T/24} \times 10{,}000 \\
+  \text{IS}_{99\%} &= \mathcal{I}_{\text{expected}} + 2.326 \cdot \sigma\sqrt{T/24} \times 10{,}000
+\end{align}
+where $\sigma\sqrt{T/24}$ is the timing risk (volatility exposure during execution).
+\end{formulabox}
+
+
+%════════════════════════════════════════════════════════════════
+\section{Transient Impact Model}
+%════════════════════════════════════════════════════════════════
+
+\begin{formulabox}[title={\S4.1 — Exponential Decay Kernel}]
+Each prior trade at time $\tau_j$ with execution rate $r_j$ (USD/sec) contributes to current impact via an exponential decay kernel:
+\begin{equation}
+  \mathcal{I}_{\text{transient}}(t) = \eta \times 10^{-4} \sum_{j=1}^{M} r_j \cdot e^{-(t - \tau_j)/\tau_d}
+\end{equation}
+where $\tau_d$ is the decay timescale (in seconds), calibrated per symbol.
+\end{formulabox}
+
+\begin{formulabox}[title={\S4.2 — Forward Impact Projection}]
+Estimated remaining impact at future time $t + \Delta t$:
+\begin{equation}
+  \hat{\mathcal{I}}(t + \Delta t) = \eta \times 10^{-4} \sum_{j=1}^{M} r_j \cdot e^{-(t + \Delta t - \tau_j)/\tau_d}
+\end{equation}
+Used to predict how much impact ``decays away'' before the next slice.
+\end{formulabox}
+
+\begin{formulabox}[title={\S4.3 — Pruning Rule}]
+Trades older than $5\tau_d$ are pruned from history:
+\begin{equation}
+  \text{cutoff} = t - 5\tau_d
+\end{equation}
+Since $e^{-5} \approx 0.007$, these contribute $<0.7\%$ of total transient impact.
+\end{formulabox}
+
+
+%════════════════════════════════════════════════════════════════
+\section{Optimal Slice Sizing (Depth-Based)}
+%════════════════════════════════════════════════════════════════
+
+\begin{formulabox}[title={\S5.1 — Depth Walk (Cumulative VWAP)}]
+Walking $L$ levels of the order book from the touch:
+\begin{equation}
+  \text{cum\_qty}_i = \sum_{j=0}^{i} q_j, \qquad
+  \text{cum\_cost}_i = \sum_{j=0}^{i} q_j \cdot p_j
+\end{equation}
+\begin{equation}
+  \text{VWAP}_i = \frac{\text{cum\_cost}_i}{\text{cum\_qty}_i}, \qquad
+  \text{impact}_i = \frac{|\text{VWAP}_i - P_{\text{mid}}|}{P_{\text{mid}}} \times 10{,}000
+\end{equation}
+\end{formulabox}
+
+\begin{formulabox}[title={\S5.2 — Slippage Budget Constraint}]
+The optimal slice quantity $Q^{*}$ is the maximum $\text{cum\_qty}$ where impact $\leq \beta$ (max bps budget):
+\begin{equation}
+  Q^{*} = \max\left\{\text{cum\_qty}_i \;\Bigg|\; \text{impact}_i \leq \beta\right\}
+\end{equation}
+\end{formulabox}
+
+\begin{formulabox}[title={\S5.3 — Level Interpolation}]
+When the budget $\beta$ is exceeded mid-level, linear interpolation finds the exact quantity:
+\begin{equation}
+  Q^{*} = \text{cum\_qty}_{i-1} + q_i \cdot \frac{\beta - \text{impact}_{i-1}}{\text{impact}_i - \text{impact}_{i-1}}
+\end{equation}
+This avoids over-conservative rounding down to the previous level.
+\end{formulabox}
+
+\begin{formulabox}[title={\S5.4 — Participation Rate Cap}]
+\begin{equation}
+  Q_{\text{cap}} = \rho_{\max} \cdot \sum_{j=0}^{L} q_j
+\end{equation}
+where $\rho_{\max}$ is the maximum participation rate (e.g.\ 10\%). The final slice respects:
+$Q_{\text{slice}} = \min(Q^{*},\; Q_{\text{cap}},\; Q_{\text{remaining}})$.
+\end{formulabox}
+
+\begin{formulabox}[title={\S5.5 — Transient Consumption Adjustment}]
+Prior slices leave a decaying ``footprint'' on the book. The effective consumption:
+\begin{equation}
+  C_{\text{transient}} = \sum_{k=0}^{K-1} q_{k}^{\text{slice}} \cdot \delta^k
+\end{equation}
+where $\delta$ is the decay factor (e.g.\ 0.7) and $k=0$ is the most recent slice.
+The available depth is reduced: $Q_{\text{avail}} = Q^{*} - C_{\text{transient}}$.
+\end{formulabox}
+
+\begin{formulabox}[title={\S5.6 — OFI Size Multiplier}]
+The Order Flow Imbalance signal adjusts the slice size:
+\begin{equation}
+  Q_{\text{adjusted}} = Q_{\text{avail}} \times \mu_{\text{OFI}}
+\end{equation}
+where the multiplier $\mu_{\text{OFI}}$ depends on signal strength:
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Signal} & \textbf{Favorable} & $\mu_{\text{OFI}}$ \\
+\midrule
+StrongBuy / StrongSell & Yes & 1.3 (boost) \\
+Buy / Sell             & Yes & 1.15 (mild boost) \\
+Neutral                & —   & 1.0 (unchanged) \\
+Buy / Sell             & No  & 0.85 (mild cut) \\
+StrongBuy / StrongSell & No  & 0.7 (penalty) \\
+\bottomrule
+\end{tabular}
+\end{center}
+``Favorable'' means the OFI direction aligns with our order side.
+\end{formulabox}
+
+
+%════════════════════════════════════════════════════════════════
+\section{Order Flow Imbalance (OFI)}
+%════════════════════════════════════════════════════════════════
+
+\begin{formulabox}[title={\S6.1 — Volume Imbalance}]
+\begin{equation}
+  \phi = \frac{V_{\text{bid}}(L) - V_{\text{ask}}(L)}{V_{\text{bid}}(L) + V_{\text{ask}}(L)}
+\end{equation}
+where $V_{\text{bid}}(L)$ and $V_{\text{ask}}(L)$ are the total quantities in the top $L$ levels of each side. Range: $\phi \in [-1, +1]$.
+\end{formulabox}
+
+\begin{formulabox}[title={\S6.2 — Depth Skew}]
+\begin{equation}
+  \psi_{\text{depth}} = \frac{V_{\text{bid}} - V_{\text{ask}}}{V_{\text{bid}} + V_{\text{ask}}}
+\end{equation}
+Same formula as imbalance but computed over the full book depth. Detects deeper liquidity asymmetry.
+\end{formulabox}
+
+\begin{formulabox}[title={\S6.3 — Wall Detection}]
+A wall exists at level $i$ if:
+\begin{equation}
+  w_i = \frac{q_i}{\displaystyle\sum_{j=0}^{L} q_j} > \theta_{\text{wall}}
+\end{equation}
+where $\theta_{\text{wall}}$ is the wall threshold (e.g.\ 0.35 = 35\% of total depth in a single level).
+\end{formulabox}
+
+\begin{formulabox}[title={\S6.4 — Signal Classification}]
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Condition} & \textbf{Signal} & \textbf{Action} \\
+\midrule
+$\phi \geq 0.58$ & StrongBuy  & Aggressive (1.5$\times$ size) \\
+$0.45 \leq \phi < 0.58$ & Buy     & Passive (1.0$\times$) \\
+$\phi \approx 0.5$       & Neutral & Passive (0.7$\times$) \\
+$0.42 < \phi \leq 0.45$ & Sell     & Passive (1.0$\times$) \\
+$\phi < 0.42$            & StrongSell & Defensive (0.5$\times$) \\
+\bottomrule
+\end{tabular}
+\end{center}
+For SELL-side orders, the conditions are mirrored.
+\end{formulabox}
+
+
+%════════════════════════════════════════════════════════════════
+\section{Dynamic Spread Threshold}
+%════════════════════════════════════════════════════════════════
+
+\begin{formulabox}[title={\S7.1 — Spread Measurement}]
+\begin{equation}
+  s = \frac{P_{\text{ask}} - P_{\text{bid}}}{\frac{1}{2}(P_{\text{ask}} + P_{\text{bid}})} \times 10{,}000 \quad \text{(bps)}
+\end{equation}
+\end{formulabox}
+
+\begin{formulabox}[title={\S7.2 — Volatility-Aware Dynamic Threshold}]
+Given a history $\{s_1, s_2, \ldots, s_N\}$ of recent spread readings:
+\begin{align}
+  \bar{s} &= \frac{1}{N}\sum_{i=1}^{N} s_i \qquad \text{(mean spread)} \\
+  \sigma_s &= \sqrt{\frac{1}{N-1}\sum_{i=1}^{N}(s_i - \bar{s})^2} \qquad \text{(spread volatility)}
+\end{align}
+The dynamic threshold for a fixed parameter $\theta_{\text{fixed}}$:
+\begin{equation}
+  \theta_{\text{dyn}} = \theta_{\text{fixed}} \times \left(1 + \nu \cdot \frac{\sigma_s}{s_0}\right)
+\end{equation}
+where $\nu$ is the volatility multiplier and $s_0$ is the base (typical) spread.
+\end{formulabox}
+
+\begin{formulabox}[title={\S7.3 — Route Decision}]
+Given current spread $s$, dynamic flash threshold $\theta_F$, market threshold $\theta_M$, and abort threshold $\theta_A$:
+\begin{equation}
+  \text{route}(s) = \begin{cases}
+    \text{Flash Limit}  & \text{if } s \leq \theta_F \\
+    \text{Adaptive Limit} & \text{if } \theta_F < s \leq \theta_M \\
+    \text{Market}       & \text{if } \theta_M < s \leq \theta_A \\
+    \text{Hold}         & \text{if } s > \theta_A
+  \end{cases}
+\end{equation}
+\end{formulabox}
+
+\begin{formulabox}[title={\S7.4 — Flash Limit Savings}]
+When a flash limit fills at the touch price instead of market:
+\begin{equation}
+  \text{savings} = s \quad \text{(entire spread, in bps)}
+\end{equation}
+For BTCUSDT with typical 2bps spread and 1000 BTC order (\$100M):
+\begin{equation}
+  \text{savings} = 2 \text{bps} \times \$100\text{M} = \$20{,}000
+\end{equation}
+\end{formulabox}
+
+
+%════════════════════════════════════════════════════════════════
+\section{Smart-Market Book Classification}
+%════════════════════════════════════════════════════════════════
+
+\begin{formulabox}[title={\S8.1 — Depth-Weighted Mid Price}]
+\begin{equation}
+  P_{\text{mid}}^{*} = \frac{\displaystyle\sum_{i=0}^{L} p_i^{\text{bid}} \cdot q_i^{\text{bid}} + \sum_{i=0}^{L} p_i^{\text{ask}} \cdot q_i^{\text{ask}}}{\displaystyle\sum_{i=0}^{L} q_i^{\text{bid}} + \sum_{i=0}^{L} q_i^{\text{ask}}}
+\end{equation}
+Volume-weighted center of gravity of the book. More robust than simple mid when depth is asymmetric.
+\end{formulabox}
+
+\begin{formulabox}[title={\S8.2 — Effective Quantity}]
+Size adjustment based on book state:
+\begin{equation}
+  Q_{\text{eff}} = Q_{\text{planned}} \times \alpha_{\text{state}}
+\end{equation}
+\begin{center}
+\begin{tabular}{lc}
+\toprule
+\textbf{Book State} & $\alpha_{\text{state}}$ \\
+\midrule
+Aggressive  & $1.0$--$1.5$ \\
+Passive     & $1.0$ \\
+Defensive   & $0.7$ \\
+WallBlocking & $0.5$ \\
+WideSpread  & $0.5$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{formulabox}
+
+\begin{formulabox}[title={\S8.3 — Limit Price with OFI Offset}]
+\begin{equation}
+  P_{\text{limit}} = P_{\text{mid}}^{*} + \text{sign}(\text{side}) \cdot \Delta_{\text{OFI}}
+\end{equation}
+where the offset $\Delta_{\text{OFI}}$ (in bps) is:
+\begin{center}
+\begin{tabular}{lc}
+\toprule
+\textbf{OFI State} & $\Delta_{\text{OFI}}$ (bps) \\
+\midrule
+Aggressive & 0 (join touch) \\
+Passive    & 1 (inside spread) \\
+Defensive  & 2 (deep inside) \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{formulabox}
+
+
+%════════════════════════════════════════════════════════════════
+\section{Order Book Slippage Estimation}
+%════════════════════════════════════════════════════════════════
+
+\begin{formulabox}[title={\S9.1 — Buy Slippage Walk}]
+For a buy order of quantity $Q$, walking ask levels:
+\begin{equation}
+  \text{VWAP}(Q) = \frac{\displaystyle\sum_{i=0}^{n-1} p_i \cdot q_i + p_n \cdot (Q - Q_{n-1})}{Q}
+\end{equation}
+where $Q_{n-1} = \sum_{i=0}^{n-1} q_i < Q$ and $Q_n = Q_{n-1} + q_n \geq Q$.
+\end{formulabox}
+
+\begin{formulabox}[title={\S9.2 — Slippage Estimate}]
+\begin{align}
+  s(Q) &= \frac{\text{VWAP}(Q) - P_{\text{mid}}}{P_{\text{mid}}} \times 10{,}000 \quad \text{(buy)} \\
+  s(Q) &= \frac{P_{\text{mid}} - \text{VWAP}(Q)}{P_{\text{mid}}} \times 10{,}000 \quad \text{(sell)}
+\end{align}
+\end{formulabox}
+
+\begin{formulabox}[title={\S9.3 — Maximum Market Order}]
+Find the largest quantity that keeps slippage within budget $\beta$:
+\begin{equation}
+  Q_{\max} = \arg\max_{Q}\; s(Q) \leq \beta
+\end{equation}
+Uses binary search over the order book levels.
+\end{formulabox}
+
+
+%════════════════════════════════════════════════════════════════
+\section{Slippage-at-Risk (SaR)}
+%════════════════════════════════════════════════════════════════
+
+\begin{formulabox}[title={\S10.1 — Book Concentration Ratio}]
+\begin{equation}
+  C = \frac{1}{2}\left(\frac{q_0^{\text{bid}}}{\sum q_i^{\text{bid}}} + \frac{q_0^{\text{ask}}}{\sum q_i^{\text{ask}}}\right)
+\end{equation}
+$C \to 1$: most liquidity is at level 0 (fragile). $C \to 0$: evenly distributed (robust).
+\end{formulabox}
+
+\begin{formulabox}[title={\S10.2 — Concentration Penalty}]
+\begin{equation}
+  \pi_C = \max\!\left(0,\; 2(C - 0.4)\right) \qquad \text{(additive multiplier)}
+\end{equation}
+Applied to expected slippage: $\hat{s} = s_{\text{base}} \times (1 + \pi_C)$.
+\end{formulabox}
+
+\begin{formulabox}[title={\S10.3 — Slippage-at-Risk}]
+\begin{align}
+  \text{SaR}_{95\%} &= \hat{s} + 1.645 \cdot \sigma \cdot \sqrt{\frac{T}{24}} \times 10{,}000 \\
+  \text{SaR}_{99\%} &= \hat{s} + 2.326 \cdot \sigma \cdot \sqrt{\frac{T}{24}} \times 10{,}000
+\end{align}
+The VaR-style bounds account for both expected slippage and adverse price movement during execution.
+\end{formulabox}
+
+\begin{formulabox}[title={\S10.4 — Book Fragility Signal}]
+\begin{equation}
+  \text{fragile} = \bigl(C > 0.5\bigr) \;\lor\; \bigl(D_{\text{total}} < 2Q\bigr)
+\end{equation}
+where $D_{\text{total}} = \sum p_i q_i$ is total depth notional. A fragile book triggers reduced order sizes.
+\end{formulabox}
+
+
+%════════════════════════════════════════════════════════════════
+\section{Cascade Detection}
+%════════════════════════════════════════════════════════════════
+
+\begin{formulabox}[title={\S11.1 — Spread Ratio}]
+\begin{equation}
+  R_s = \frac{s_t}{\bar{s}_{\text{rolling}}}
+\end{equation}
+Current spread divided by rolling mean. $R_s > 3$ signals abnormal widening.
+\end{formulabox}
+
+\begin{formulabox}[title={\S11.2 — Volume Ratio}]
+\begin{equation}
+  R_v = \frac{v_t}{\bar{v}_{\text{rolling}}}
+\end{equation}
+Current volume rate vs rolling average. $R_v > 5$ with $R_s > 2$ suggests cascade selling/buying.
+\end{formulabox}
+
+\begin{formulabox}[title={\S11.3 — Cascade Scoring}]
+\begin{equation}
+  \text{cascade} = \bigl(R_s > 3\bigr) \;\land\; \bigl(R_v > 5\bigr)
+\end{equation}
+When detected, execution pauses to avoid adding fuel to the cascade.
+\end{formulabox}
+
+
+%════════════════════════════════════════════════════════════════
+\section{Combined Slippage Minimization Objective}
+%════════════════════════════════════════════════════════════════
+
+\begin{formulabox}[title={\S12.1 — Global Objective Function}]
+The complete execution optimization minimizes:
+\begin{equation}
+  \boxed{
+  \min_{Q_1, \ldots, Q_N} \;\; \sum_{i=1}^{N} \left[
+    \underbrace{\eta\sigma\sqrt{\frac{Q_i}{V}}}_{\text{temp.\ impact}}
+    + \underbrace{\gamma\frac{Q_i}{V}}_{\text{perm.\ impact}}
+    + \underbrace{\lambda\sigma^2\frac{Q_i}{V}\Delta t_i}_{\text{timing risk}}
+    + \underbrace{\mathcal{I}_{\text{transient}}(t_i) \cdot \mathbb{1}_{[\text{decay}]}}_{\text{cross-slice}}
+  \right]
+  }
+\end{equation}
+subject to:
+\begin{align}
+  \sum_{i=1}^{N} Q_i &= Q_{\text{total}} & & \text{(full execution)} \\
+  Q_i &\leq \rho_{\max} \cdot V_{\text{visible}} & & \text{(participation cap)} \\
+  s(Q_i) &\leq \beta_{\max} & & \text{(slippage budget)} \\
+  \Delta t_i &\geq \Delta t_{\min} & & \text{(min interval)}
+\end{align}
+\end{formulabox}
+
+\begin{formulabox}[title={\S12.2 — How Each Module Optimizes This Objective}]
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Module} & \textbf{Optimizes} & \textbf{Constraint Enforced} \\
+\midrule
+Optimal Slicer  & $Q_i$: slippage budget & $s(Q_i) \leq \beta_{\max}$ \\
+Flash Limit     & order type selection  & saves spread when $s$ is tight \\
+Smart-Market    & $P_{\text{limit}}$: OFI offset & depth-weighted pricing \\
+IS Schedule     & $Q_i, \Delta t_i$: Almgren-Chriss & $\min(\text{temp} + \text{timing})$ \\
+Transient Model & cross-slice decay     & $\mathcal{I}_{\text{transient}}$ tracking \\
+SaR             & risk bounds           & $\text{SaR}_{95\%}$ ceiling \\
+Error Handling  & retry/skip/abort      & graceful degradation \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{formulabox}
+
+\end{document}

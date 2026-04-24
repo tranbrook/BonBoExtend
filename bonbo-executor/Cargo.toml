@@ -13,8 +13,10 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 rust_decimal = { workspace = true }
+futures-util = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
+async-trait = "0.1"
 bonbo-binance-futures = { path = "../bonbo-binance-futures" }
 bonbo-data = { path = "../bonbo-data" }
 

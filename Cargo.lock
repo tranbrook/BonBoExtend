@@ -186,7 +186,7 @@ dependencies = [
 
 [[package]]
 name = "bonbo-agent"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -207,15 +207,17 @@ dependencies = [
 
 [[package]]
 name = "bonbo-binance-futures"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "dotenvy",
  "futures-util",
  "hex",
  "hmac",
  "reqwest",
  "rust_decimal",
+ "rust_decimal_macros",
  "serde",
  "serde_json",
  "sha2",
@@ -223,12 +225,13 @@ dependencies = [
  "tokio",
  "tokio-tungstenite",
  "tracing",
+ "tracing-subscriber",
  "uuid",
 ]
 
 [[package]]
 name = "bonbo-data"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "bonbo-ta",
@@ -244,12 +247,14 @@ dependencies = [
 
 [[package]]
 name = "bonbo-executor"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "bonbo-binance-futures",
  "bonbo-data",
  "chrono",
+ "futures-util",
  "rust_decimal",
  "serde",
  "serde_json",
@@ -260,11 +265,13 @@ dependencies = [
 
 [[package]]
 name = "bonbo-extend"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "bonbo-binance-futures",
  "bonbo-data",
+ "bonbo-executor",
  "bonbo-journal",
  "bonbo-learning",
  "bonbo-quant",
@@ -277,6 +284,8 @@ dependencies = [
  "chrono",
  "dirs",
  "reqwest",
+ "rust_decimal",
+ "rust_decimal_macros",
  "serde",
  "serde_json",
  "serde_repr",
@@ -290,7 +299,7 @@ dependencies = [
 
 [[package]]
 name = "bonbo-extend-mcp"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -307,7 +316,7 @@ dependencies = [
 
 [[package]]
 name = "bonbo-funding"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "bonbo-binance-futures",
@@ -322,7 +331,7 @@ dependencies = [
 
 [[package]]
 name = "bonbo-journal"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -339,7 +348,7 @@ dependencies = [
 
 [[package]]
 name = "bonbo-learning"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -356,7 +365,7 @@ dependencies = [
 
 [[package]]
 name = "bonbo-position-manager"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "bonbo-binance-futures",
@@ -373,7 +382,7 @@ dependencies = [
 
 [[package]]
 name = "bonbo-quant"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "bonbo-data",
@@ -387,7 +396,7 @@ dependencies = [
 
 [[package]]
 name = "bonbo-regime"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -401,7 +410,7 @@ dependencies = [
 
 [[package]]
 name = "bonbo-risk"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -417,7 +426,7 @@ dependencies = [
 
 [[package]]
 name = "bonbo-scanner"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -434,7 +443,7 @@ dependencies = [
 
 [[package]]
 name = "bonbo-sentinel"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -447,7 +456,7 @@ dependencies = [
 
 [[package]]
 name = "bonbo-ta"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "approx",
@@ -462,7 +471,7 @@ dependencies = [
 
 [[package]]
 name = "bonbo-validation"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -789,6 +798,12 @@ dependencies = [
  "quote",
  "syn 2.0.117",
 ]
+
+[[package]]
+name = "dotenvy"
+version = "0.15.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
 name = "either"

@@ -21,9 +21,9 @@
 use anyhow::Result;
 use bonbo_extend::registry::PluginRegistry;
 use bonbo_extend::tools::{
-    BacktestPlugin, JournalPlugin, LearningPlugin, MarketDataPlugin, PriceAlertPlugin,
-    RegimePlugin, RiskPlugin, ScannerPlugin, SentinelPlugin, SystemMonitorPlugin,
-    TechnicalAnalysisPlugin, ValidationPlugin,
+    BacktestPlugin, JournalPlugin, LearningPlugin, MarketDataPlugin, PortfolioPlugin,
+    PriceAlertPlugin, RegimePlugin, RiskPlugin, ScannerPlugin, SentinelPlugin,
+    SystemMonitorPlugin, TechnicalAnalysisPlugin, TradingPlugin, ValidationPlugin,
 };
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -55,6 +55,10 @@ fn build_registry() -> Result<PluginRegistry> {
     registry.register_tool_plugin(ValidationPlugin::new())?;
     // Phase 5: Scanner
     registry.register_tool_plugin(ScannerPlugin::new())?;
+    // Phase 6: Trading (Binance Futures direct access)
+    registry.register_tool_plugin(TradingPlugin::new())?;
+    // Phase 7: Portfolio Analysis
+    registry.register_tool_plugin(PortfolioPlugin::new())?;
     Ok(registry)
 }
 

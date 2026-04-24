@@ -64,11 +64,35 @@ impl OrdersClient {
     }
 
     /// Cancel all open orders for a symbol.
+    /// Binance returns `{"code":200,"msg":"Success"}` when no orders exist,
+    /// or a `Vec<CancelOrderResponse>` when orders were cancelled.
     pub async fn cancel_all_orders(client: &FuturesRestClient, symbol: &str) -> anyhow::Result<Vec<CancelOrderResponse>> {
         let params = format!("symbol={}", symbol);
         let value = client.delete_signed("/fapi/v1/allOpenOrders", &params).await?;
-        let responses: Vec<CancelOrderResponse> = serde_json::from_value(value)?;
-        Ok(responses)
+
+        // Check if response is an object (success ack) or array (cancelled orders)
+        match value {
+            serde_json::Value::Array(arr) => {
+                let responses: Vec<CancelOrderResponse> = serde_json::from_value(serde_json::Value::Array(arr))?;
+                Ok(responses)
+            }
+            serde_json::Value::Object(obj) => {
+                // Single response like {"code": 200, "msg": "Success"}
+                let code = obj.get("code").and_then(|v| v.as_i64()).unwrap_or(0);
+                if code == 200 {
+                    tracing::debug!("All open orders cancelled (or none existed) for {}", symbol);
+                    Ok(vec![])
+                } else {
+                    let msg = obj.get("msg").and_then(|v| v.as_str()).unwrap_or("Unknown error");
+                    Err(anyhow::anyhow!("Cancel all orders failed: code={} msg={}", code, msg))
+                }
+            }
+            other => {
+                // Unexpected format, try parsing as array anyway
+                let responses: Vec<CancelOrderResponse> = serde_json::from_value(other)?;
+                Ok(responses)
+            }
+        }
     }
 
     /// Get open orders for a symbol.

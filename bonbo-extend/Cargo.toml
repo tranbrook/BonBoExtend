@@ -39,6 +39,12 @@ bonbo-regime = { path = "../bonbo-regime" }
 bonbo-learning = { path = "../bonbo-learning" }
 bonbo-validation = { path = "../bonbo-validation" }
 bonbo-scanner = { path = "../bonbo-scanner" }
+bonbo-binance-futures = { path = "../bonbo-binance-futures" }
+bonbo-executor = { path = "../bonbo-executor" }
+
+# Decimal for trading math
+rust_decimal = { workspace = true }
+rust_decimal_macros = "1"
 
 [dev-dependencies]
 tokio-test = "0.4"

@@ -112,11 +112,19 @@ fn compute_hurst_rs(prices: &[f64]) -> Option<f64> {
     let max_size = returns.len();
     let n = returns.len();
 
-    // Use logarithmically spaced subdivision sizes
-    let subdivisions: Vec<usize> = (1..=6)
+    // Use logarithmically spaced subdivision sizes.
+    // This is critical for accurate Hurst estimation — the R/S method
+    // requires evenly-spaced points on a log-log plot.
+    // Linear spacing (the old approach) overweights small subgroups.
+    let log_min = (min_size as f64).ln();
+    let log_max = (max_size as f64).ln();
+    let num_subdivisions = 8;
+    let subdivisions: Vec<usize> = (1..=num_subdivisions)
         .filter_map(|k| {
-            let size = min_size + (max_size - min_size) * k / 7;
-            if size >= min_size && size <= n {
+            let t = k as f64 / (num_subdivisions + 1) as f64;
+            let log_size = log_min + t * (log_max - log_min);
+            let size = log_size.exp().round() as usize;
+            if size >= min_size && size <= n && size >= 4 {
                 Some(size)
             } else {
                 None

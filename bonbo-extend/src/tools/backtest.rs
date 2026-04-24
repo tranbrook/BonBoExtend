@@ -71,6 +71,15 @@ impl ToolPlugin for BacktestPlugin {
                             "macd_crossover".into(),
                             "grid_trading".into(),
                             "dca".into(),
+                            "alma_crossover".into(),
+                            "laguerre_rsi".into(),
+                            "cmo_momentum".into(),
+                            "fh_composite".into(),
+                            "ehlers_trend".into(),
+                            "enhanced_mean_reversion".into(),
+                            "bb_bounce".into(),
+                            "hurst_regime_switching".into(),
+                            "ema_crossover".into(),
                         ]),
                     },
                     ParameterSchema {
@@ -260,6 +269,16 @@ impl BacktestPlugin {
             }
             "enhanced_mean_reversion" => {
                 let s = bonbo_quant::EnhancedMeanReversionStrategy::new();
+                let mut eng = bonbo_quant::engine::BacktestEngine::new(config, s);
+                eng.run(&candles)?
+            }
+            "bb_bounce" => {
+                let s = bonbo_quant::BbBounceStrategy::new();
+                let mut eng = bonbo_quant::engine::BacktestEngine::new(config, s);
+                eng.run(&candles)?
+            }
+            "hurst_regime_switching" => {
+                let s = bonbo_quant::HurstRegimeSwitchingStrategy::new();
                 let mut eng = bonbo_quant::engine::BacktestEngine::new(config, s);
                 eng.run(&candles)?
             }

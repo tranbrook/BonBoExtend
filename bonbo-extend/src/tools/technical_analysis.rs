@@ -169,6 +169,23 @@ impl TechnicalAnalysisPlugin {
                 "\n🧬 **Hurst(100)**: {:.3} — {}\n",
                 h, regime_str
             ));
+
+            // QW2: Hurst divergence detection
+            if let Some(Some(h_short)) = analysis.hurst_short.last() {
+                let divergence = (h - h_short).abs();
+                if divergence > 0.15 {
+                    let direction = if h_short > h { "emerging trend" } else { "fading trend" };
+                    result.push_str(&format!(
+                        "    ⚡ **Hurst Divergence**: short={:.3} vs long={:.3} (Δ={:.3}) → regime transition likely ({})\n",
+                        h_short, h, divergence, direction
+                    ));
+                } else {
+                    result.push_str(&format!(
+                        "    ℹ️ **Hurst(50)**: {:.3} — aligned with long-term\n",
+                        h_short
+                    ));
+                }
+            }
         } else {
             result.push_str("\n🧬 **Hurst(100)**: ⏳ Need 100+ candles\n");
         }
@@ -189,7 +206,7 @@ impl TechnicalAnalysisPlugin {
             result.push_str(&format!("⚡ **CMO(14)**: {:.1} {}\n", cmo, label));
         }
 
-        // Laguerre RSI
+        // Laguerre RSI (dual gamma — QW3)
         if let Some(Some(lrsi)) = analysis.laguerre_rsi.last() {
             let label = if *lrsi > 0.8 {
                 "🔴 Overbought"
@@ -199,13 +216,71 @@ impl TechnicalAnalysisPlugin {
                 "⚪ Neutral"
             };
             result.push_str(&format!(
-                "🌀 **LaguerreRSI(0.8)**: {:.3} {}\n",
+                "🌀 **LaguerreRSI(γ=0.8)**: {:.3} {}\n",
                 lrsi, label
             ));
         }
+        // QW3: Fast LaguerreRSI (gamma=0.5) — more responsive, avoids flat-line at 1.0
+        if let Some(Some(lrsi_fast)) = analysis.laguerre_rsi_fast.last() {
+            let label = if *lrsi_fast > 0.8 {
+                "🔴 Overbought"
+            } else if *lrsi_fast < 0.2 {
+                "🟢 Oversold"
+            } else {
+                "⚪ Neutral"
+            };
+            result.push_str(&format!(
+                "🌀 **LaguerreRSI(γ=0.5)**: {:.3} {} (responsive)\n",
+                lrsi_fast, label
+            ));
+            // Show divergence between fast and slow
+            if let Some(Some(lrsi_slow)) = analysis.laguerre_rsi.last() {
+                let diff = lrsi_fast - lrsi_slow;
+                if diff.abs() > 0.2 {
+                    let hint = if diff > 0.0 { "momentum accelerating" } else { "momentum decelerating" };
+                    result.push_str(&format!(
+                        "    ⚡ **LaguerreRSI Divergence**: fast-slow={:+.3} → {}\n",
+                        diff, hint
+                    ));
+                }
+            }
+        }
 
         if let Some(p) = closes.last() {
-            result.push_str(&format!("\n💰 **Price**: ${:.2}", p));
+            result.push_str(&format!("\n💰 **Price**: ${:.2}\n", p));
+
+            // QW1: ATR-based stop loss (regime-adaptive)
+            if candles.len() >= 14 {
+                let atr = compute_atr_from_candles(&candles, 14);
+                if let Some(atr_val) = atr {
+                    let hurst_val = analysis.hurst.last().and_then(|v| *v);
+                    let (mult, regime_hint) = match hurst_val {
+                        Some(h) if h > 0.55 => (2.0, "Trending → wider SL (2.0×ATR)"),
+                        Some(h) if h < 0.45 => (1.5, "Mean-Reverting → tight SL (1.5×ATR)"),
+                        Some(_) => (2.5, "Random Walk → widest SL (2.5×ATR)"),
+                        None => (2.0, "Default SL (2.0×ATR)"),
+                    };
+                    let sl_long = p - atr_val * mult;
+                    let sl_short = p + atr_val * mult;
+                    let tp_r1 = p + atr_val * mult; // R:R 1:1
+                    result.push_str(&format!(
+                        "\n🛡️ **ATR Stops** (ATR(14)={:.4}, {})\n",
+                        atr_val, regime_hint
+                    ));
+                    result.push_str(&format!(
+                        "    LONG  → SL: ${:.2} ({:.1}%) | TP: ${:.2} (+{:.1}%)\n",
+                        sl_long,
+                        (sl_long - p) / p * 100.0,
+                        tp_r1,
+                        (tp_r1 - p) / p * 100.0,
+                    ));
+                    result.push_str(&format!(
+                        "    SHORT → SL: ${:.2} (+{:.1}%)\n",
+                        sl_short,
+                        (sl_short - p) / p * 100.0,
+                    ));
+                }
+            }
         }
         Ok(result)
     }
@@ -264,7 +339,7 @@ impl TechnicalAnalysisPlugin {
     async fn do_detect_market_regime(&self, args: &Value) -> anyhow::Result<String> {
         let symbol = args["symbol"].as_str().unwrap_or("BTCUSDT");
         let interval = args["interval"].as_str().unwrap_or("1d");
-        // 200 candles for Hurst
+        // 200 candles for full analysis
         let candles = self.fetch_candles(symbol, interval, 200).await?;
         if candles.len() < 20 {
             return Ok("⚠️ Not enough data".to_string());
@@ -274,14 +349,25 @@ impl TechnicalAnalysisPlugin {
         let regime = bonbo_ta::batch::detect_market_regime(&candles);
         let price = candles.last().map(|c| c.close).unwrap_or(0.0);
 
-        // Get Hurst value for display
-        let hurst_val = bonbo_ta::HurstExponent::compute(&closes);
+        // Get Hurst value for display — use last 101 prices to match analyze_indicators
+        // (which uses incremental HurstExponent with window=100, keeping window+1=101 prices)
+        let hurst_window = 101;
+        let start = closes.len().saturating_sub(hurst_window);
+        let hurst_closes: Vec<f64> = closes[start..].to_vec();
+        let hurst_val = bonbo_ta::HurstExponent::compute(&hurst_closes);
         let hurst_str = match hurst_val {
             Some(h) => format!("{:.3}", h),
             None => "N/A (need 100+ candles)".to_string(),
         };
 
-        // Get Hurst character
+        // Also compute Hurst on ALL prices for comparison
+        let hurst_full = bonbo_ta::HurstExponent::compute(&closes);
+        let hurst_full_str = match hurst_full {
+            Some(h) => format!("{:.3}", h),
+            None => "N/A".to_string(),
+        };
+
+        // Get Hurst character (use windowed Hurst for consistency with analyze_indicators)
         let char_str = match hurst_val {
             Some(h) if h > 0.55 => MarketCharacter::Trending.to_string(),
             Some(h) if h < 0.45 => MarketCharacter::MeanReverting.to_string(),
@@ -297,7 +383,7 @@ impl TechnicalAnalysisPlugin {
             bonbo_ta::models::MarketRegime::Quiet => "🔇 Low volatility — breakout incoming, prepare entry",
         };
 
-        // Strategy recommendation based on Hurst
+        // Strategy recommendation based on windowed Hurst (consistent with analyze_indicators)
         let strategy = match hurst_val {
             Some(h) if h > 0.55 => "→ Strategy: Ehlers Trend Following (SuperSmoother + ALMA crossover)",
             Some(h) if h < 0.45 => "→ Strategy: Mean Reversion (BB + RSI extreme + Hurst filter)",
@@ -305,10 +391,32 @@ impl TechnicalAnalysisPlugin {
             None => "→ Strategy: Insufficient data for Hurst, use standard approach",
         };
 
-        Ok(format!(
-            "{}\n\n💰 **{}** @ ${:.2}\n🧬 Hurst(100): {} ({})\n📝 {}\n\n{}",
-            regime, symbol, price, hurst_str, char_str, desc, strategy
-        ))
+        // Detect if there's a divergence between short-term and long-term Hurst
+        let hurst_divergence = match (hurst_val, hurst_full) {
+            (Some(h_short), Some(h_long)) => {
+                let diff = (h_short - h_long).abs();
+                if diff > 0.15 {
+                    Some(format!(
+                        "⚠️ Hurst divergence: short-term({:.3}) vs long-term({:.3}) differ by {:.3} — regime transition likely",
+                        h_short, h_long, diff
+                    ))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+
+        let mut output = format!(
+            "{}\n\n💰 **{}** @ ${:.2}\n🧬 Hurst(100): {} ({})\n🧬 Hurst(full): {}\n📝 {}\n\n{}",
+            regime, symbol, price, hurst_str, char_str, hurst_full_str, desc, strategy
+        );
+
+        if let Some(divergence) = hurst_divergence {
+            output.push_str(&format!("\n{}", divergence));
+        }
+
+        Ok(output)
     }
 
     async fn do_get_support_resistance(&self, args: &Value) -> anyhow::Result<String> {
@@ -480,4 +588,37 @@ impl ToolPlugin for TechnicalAnalysisPlugin {
             _ => anyhow::bail!("Unknown tool: {}", tool_name),
         }
     }
+}
+
+/// QW1: Compute ATR from candle data using Wilder's smoothing.
+/// Returns None if not enough candles.
+fn compute_atr_from_candles(candles: &[bonbo_ta::models::OhlcvCandle], period: usize) -> Option<f64> {
+    if candles.len() < period + 1 {
+        return None;
+    }
+
+    // True Range for each candle
+    let mut tr_values: Vec<f64> = Vec::with_capacity(candles.len() - 1);
+    for i in 1..candles.len() {
+        let high = candles[i].high;
+        let low = candles[i].low;
+        let prev_close = candles[i - 1].close;
+        let tr = (high - low)
+            .max((high - prev_close).abs())
+            .max((low - prev_close).abs());
+        tr_values.push(tr);
+    }
+
+    if tr_values.len() < period {
+        return None;
+    }
+
+    // Wilder's smoothing: first value = SMA, then EMA with alpha = 1/period
+    let first_sma: f64 = tr_values[..period].iter().sum::<f64>() / period as f64;
+    let mut atr = first_sma;
+    let alpha = 1.0 / period as f64;
+    for tr in &tr_values[period..] {
+        atr = atr * (1.0 - alpha) + tr * alpha;
+    }
+    Some(atr)
 }

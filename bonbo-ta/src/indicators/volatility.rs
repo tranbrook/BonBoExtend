@@ -71,9 +71,14 @@ impl IncrementalIndicator for BollingerBands {
             return None;
         }
 
+        // Sample variance (Bessel's correction: divide by n-1).
+        // TradingView, TA-Lib, and all major platforms use sample variance for BB.
+        // Population variance (n) underestimates std by ~5% for typical BB(20).
         let n = self.period as f64;
         let mean = self.sum / n;
-        let variance = (self.sum_sq / n) - (mean * mean);
+        // E[X²] - (E[X])² gives population variance; multiply by n/(n-1) for sample.
+        let pop_variance = (self.sum_sq / n) - (mean * mean);
+        let variance = pop_variance * (n / (n - 1.0));
         let std_dev = variance.sqrt().max(0.0);
 
         let upper = mean + self.multiplier * std_dev;

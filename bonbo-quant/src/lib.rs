@@ -8,8 +8,9 @@ pub mod strategies;
 pub mod strategy;
 
 pub use advanced_strategies::{
-    AlmaCrossoverStrategy, CmoMomentumStrategy, EhlersTrendStrategy,
-    EnhancedMeanReversionStrategy, FhCompositeStrategy, LaguerreRsiStrategy,
+    AlmaCrossoverStrategy, BbBounceStrategy, CmoMomentumStrategy, EhlersTrendStrategy,
+    EnhancedMeanReversionStrategy, FhCompositeStrategy, HurstRegimeSwitchingStrategy,
+    LaguerreRsiStrategy,
 };
 pub use engine::BacktestEngine;
 pub use models::{

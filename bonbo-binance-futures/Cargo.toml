@@ -25,3 +25,6 @@ hex = "0.4"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }
+tracing-subscriber = { workspace = true }
+dotenvy = "0.15"
+rust_decimal_macros = "1"

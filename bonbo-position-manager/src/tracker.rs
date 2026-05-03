@@ -1,9 +1,9 @@
 //! Position tracker — maintains real-time position state.
 
+use crate::ManagedPosition;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use crate::ManagedPosition;
 
 /// Tracks all managed positions.
 #[derive(Debug, Clone)]
@@ -22,7 +22,11 @@ impl PositionTracker {
     /// Add a new position to track.
     pub async fn add(&self, position: ManagedPosition) {
         let mut positions = self.positions.write().await;
-        tracing::info!("Tracking position: {} (qty: {})", position.symbol, position.quantity);
+        tracing::info!(
+            "Tracking position: {} (qty: {})",
+            position.symbol,
+            position.quantity
+        );
         positions.insert(position.symbol.clone(), position);
     }
 
@@ -55,7 +59,12 @@ impl PositionTracker {
     pub async fn update_quantity(&self, symbol: &str, new_qty: rust_decimal::Decimal) {
         let mut positions = self.positions.write().await;
         if let Some(pos) = positions.get_mut(symbol) {
-            tracing::info!("Updating {} quantity: {} → {}", symbol, pos.quantity, new_qty);
+            tracing::info!(
+                "Updating {} quantity: {} → {}",
+                symbol,
+                pos.quantity,
+                new_qty
+            );
             pos.quantity = new_qty;
         }
     }
@@ -106,13 +115,23 @@ impl PositionTracker {
     }
 
     /// Get total unrealized P&L across all positions.
-    pub async fn total_unrealized_pnl(&self, prices: &HashMap<String, rust_decimal::Decimal>) -> rust_decimal::Decimal {
+    pub async fn total_unrealized_pnl(
+        &self,
+        prices: &HashMap<String, rust_decimal::Decimal>,
+    ) -> rust_decimal::Decimal {
         let positions = self.positions.read().await;
-        positions.values().map(|p| {
-            prices.get(&p.symbol)
-                .map(|&price| p.pnl_pct(price) * p.quantity * p.entry_price / rust_decimal::Decimal::ONE_HUNDRED)
-                .unwrap_or(rust_decimal::Decimal::ZERO)
-        }).sum()
+        positions
+            .values()
+            .map(|p| {
+                prices
+                    .get(&p.symbol)
+                    .map(|&price| {
+                        p.pnl_pct(price) * p.quantity * p.entry_price
+                            / rust_decimal::Decimal::ONE_HUNDRED
+                    })
+                    .unwrap_or(rust_decimal::Decimal::ZERO)
+            })
+            .sum()
     }
 }
 

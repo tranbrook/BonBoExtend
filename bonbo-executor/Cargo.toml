@@ -6,6 +6,16 @@ description = "Order execution with Saga pattern for Binance Futures"
 authors.workspace = true
 license.workspace = true
 
+[features]
+default = ["vwap", "twap", "pov", "is", "ofi", "flash", "smart-market"]
+vwap = []
+twap = []
+pov = []
+is = []
+ofi = []
+flash = []
+smart-market = []
+
 [dependencies]
 tokio = { workspace = true }
 serde = { workspace = true }

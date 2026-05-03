@@ -6,3 +6,6 @@ pub mod position_sizing;
 pub mod var;
 
 pub use models::{RiskCheckResult, RiskConfig};
+pub use position_sizing::{
+    AtrStopLossResult, StopLossRegime, compute_atr_stop_loss, regime_multiplier,
+};

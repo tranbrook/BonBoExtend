@@ -6,10 +6,11 @@
 //! - SuperSmoother for noise-filtered momentum
 //! - Regime-appropriate strategy recommendations
 
-use crate::plugin::*;
 use async_trait::async_trait;
+use bonbo_extend_core::*;
 use serde_json::{Value, json};
 
+use bonbo_data::binance_config::BinanceEndpoints;
 use bonbo_scanner::models::ScanConfig;
 use bonbo_scanner::scanner::MarketScanner;
 use bonbo_scanner::scheduler::ScanScheduler;
@@ -147,10 +148,10 @@ impl ToolPlugin for ScannerPlugin {
                     .unwrap_or_else(|| {
                         // Default: top 20 by volume (dynamic, not hardcoded)
                         vec![
-                            "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT",
-                            "ADAUSDT", "AVAXUSDT", "DOGEUSDT", "LINKUSDT", "DOTUSDT",
-                            "SUIUSDT", "PEPEUSDT", "AAVEUSDT", "TAOUSDT", "SEIUSDT",
-                            "ZECUSDT", "TRXUSDT", "SUIUSDT", "NEARUSDT", "APTUSDT",
+                            "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT",
+                            "AVAXUSDT", "DOGEUSDT", "LINKUSDT", "DOTUSDT", "SUIUSDT", "PEPEUSDT",
+                            "AAVEUSDT", "TAOUSDT", "SEIUSDT", "ZECUSDT", "TRXUSDT", "SUIUSDT",
+                            "NEARUSDT", "APTUSDT",
                         ]
                         .into_iter()
                         .map(String::from)
@@ -245,7 +246,9 @@ impl ToolPlugin for ScannerPlugin {
                     .unwrap_or(25.0) as usize;
 
                 // Step 1: Fetch all 24hr tickers from Binance
-                let movers = self.fetch_hot_movers(min_volume, min_change, max_symbols).await?;
+                let movers = self
+                    .fetch_hot_movers(min_volume, min_change, max_symbols)
+                    .await?;
 
                 if movers.is_empty() {
                     return Ok("📊 No hot movers found matching criteria.".to_string());
@@ -264,8 +267,8 @@ impl ToolPlugin for ScannerPlugin {
 
                 if !gainers.is_empty() {
                     r.push_str("### 📈 Top Gainers\n");
-                    r.push_str(&format!("| # | Symbol | 24h % | Volume | Hurst | Regime | Score |\n"));
-                    r.push_str(&format!("|---|--------|-------|--------|-------|--------|-------|\n"));
+                    r.push_str("| # | Symbol | 24h % | Volume | Hurst | Regime | Score |\n");
+                    r.push_str("|---|--------|-------|--------|-------|--------|-------|\n");
                     for (i, m) in gainers.iter().enumerate() {
                         if let Some(a) = analyses.iter().find(|a| a.symbol == m.symbol) {
                             let h = a.hurst.map(|h| format!("{:.2}", h)).unwrap_or("—".into());
@@ -281,13 +284,13 @@ impl ToolPlugin for ScannerPlugin {
                             ));
                         }
                     }
-                    r.push_str("\n");
+                    r.push('\n');
                 }
 
                 if !losers.is_empty() {
                     r.push_str("### 📉 Top Losers\n");
-                    r.push_str(&format!("| # | Symbol | 24h % | Volume | Hurst | Regime | Score |\n"));
-                    r.push_str(&format!("|---|--------|-------|--------|-------|--------|-------|\n"));
+                    r.push_str("| # | Symbol | 24h % | Volume | Hurst | Regime | Score |\n");
+                    r.push_str("|---|--------|-------|--------|-------|--------|-------|\n");
                     for (i, m) in losers.iter().enumerate() {
                         if let Some(a) = analyses.iter().find(|a| a.symbol == m.symbol) {
                             let h = a.hurst.map(|h| format!("{:.2}", h)).unwrap_or("—".into());
@@ -303,12 +306,16 @@ impl ToolPlugin for ScannerPlugin {
                             ));
                         }
                     }
-                    r.push_str("\n");
+                    r.push('\n');
                 }
 
                 // Top picks from analysis
                 let mut scored: Vec<_> = analyses.iter().filter(|a| a.score >= 55.0).collect();
-                scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+                scored.sort_by(|a, b| {
+                    b.score
+                        .partial_cmp(&a.score)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
 
                 if !scored.is_empty() {
                     r.push_str("### 🏆 Best Opportunities (score ≥ 55)\n\n");
@@ -368,10 +375,8 @@ impl ScannerPlugin {
         let mut results = Vec::with_capacity(symbols.len());
 
         for symbol in symbols {
-            let url = format!(
-                "https://api.binance.com/api/v3/ticker/24hr?symbol={}",
-                symbol
-            );
+            let ep = BinanceEndpoints::current();
+            let url = ep.ticker_24hr_url(Some(symbol));
 
             // Fetch 24h ticker and candles sequentially
             let ticker_resp = client.get(&url).send().await;
@@ -420,10 +425,7 @@ impl ScannerPlugin {
                                             },
                                         )
                                     } else {
-                                        (
-                                            "RandomWalk".to_string(),
-                                            "CAUTION".to_string(),
-                                        )
+                                        ("RandomWalk".to_string(), "CAUTION".to_string())
                                     };
                                     (Some(h), mc, sh)
                                 }
@@ -534,40 +536,68 @@ impl ScannerPlugin {
             .build()?;
 
         // Fetch ALL 24hr tickers from Binance
-        let url = "https://api.binance.com/api/v3/ticker/24hr";
+        let ep = BinanceEndpoints::current();
+        let url = ep.ticker_24hr_url(None);
         let resp = client.get(url).send().await?;
         let tickers: Vec<Value> = resp.json().await.unwrap_or_default();
 
         // Filter: USDT pairs only, min volume, min change, exclude stablecoins
-        let stablecoins = ["USDCUSDT", "USD1USDT", "RLUSDUSDT", "FDUSDUSDT", "EURUSDT", "BIOUSDT", "币安人生USDT"];
+        let stablecoins = [
+            "USDCUSDT",
+            "USD1USDT",
+            "RLUSDUSDT",
+            "FDUSDUSDT",
+            "EURUSDT",
+            "BIOUSDT",
+            "币安人生USDT",
+        ];
         let mut movers: Vec<HotMover> = tickers
             .iter()
             .filter_map(|t| {
                 let symbol = t["symbol"].as_str()?.to_string();
-                if !symbol.ends_with("USDT") { return None; }
-                if stablecoins.contains(&symbol.as_str()) { return None; }
+                if !symbol.ends_with("USDT") {
+                    return None;
+                }
+                if stablecoins.contains(&symbol.as_str()) {
+                    return None;
+                }
 
-                let change_pct = t["priceChangePercent"].as_str()
+                let change_pct = t["priceChangePercent"]
+                    .as_str()
                     .and_then(|s| s.parse::<f64>().ok())
                     .unwrap_or(0.0);
-                let volume = t["quoteVolume"].as_str()
+                let volume = t["quoteVolume"]
+                    .as_str()
                     .and_then(|s| s.parse::<f64>().ok())
                     .unwrap_or(0.0);
-                let price = t["lastPrice"].as_str()
+                let price = t["lastPrice"]
+                    .as_str()
                     .and_then(|s| s.parse::<f64>().ok())
                     .unwrap_or(0.0);
 
                 // Filter criteria
-                if volume < min_volume { return None; }
-                if change_pct.abs() < min_change { return None; }
+                if volume < min_volume {
+                    return None;
+                }
+                if change_pct.abs() < min_change {
+                    return None;
+                }
 
-                Some(HotMover { symbol, price, change_pct, volume })
+                Some(HotMover {
+                    symbol,
+                    price,
+                    change_pct,
+                    volume,
+                })
             })
             .collect();
 
         // Sort by absolute change % descending
         movers.sort_by(|a, b| {
-            b.change_pct.abs().partial_cmp(&a.change_pct.abs()).unwrap_or(std::cmp::Ordering::Equal)
+            b.change_pct
+                .abs()
+                .partial_cmp(&a.change_pct.abs())
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
 
         movers.truncate(max_symbols);
@@ -578,6 +608,7 @@ impl ScannerPlugin {
 /// Hot mover data from Binance 24hr ticker.
 struct HotMover {
     symbol: String,
+    #[allow(dead_code)]
     price: f64,
     change_pct: f64,
     volume: f64,

@@ -16,15 +16,14 @@ async fn main() -> Result<()> {
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
     dotenvy::from_path(format!("{}/BonBoExtend/.env", home)).ok();
 
-    tracing_subscriber::fmt()
-        .with_env_filter("info")
-        .init();
+    tracing_subscriber::fmt().with_env_filter("info").init();
 
     // === Setup client ===
     let config = FuturesConfig::from_env().context("Failed to load Binance config from .env")?;
     let client = FuturesRestClient::new(&config);
 
-    println!("🔧 Connected to Binance {}",
+    println!(
+        "🔧 Connected to Binance {}",
         if config.testnet { "TESTNET" } else { "MAINNET" }
     );
 
@@ -41,7 +40,10 @@ async fn main() -> Result<()> {
             if cancelled.is_empty() {
                 println!("   ✅ No open orders to cancel for ORDIUSDT");
             } else {
-                println!("   ✅ Cancelled {} open orders for ORDIUSDT", cancelled.len());
+                println!(
+                    "   ✅ Cancelled {} open orders for ORDIUSDT",
+                    cancelled.len()
+                );
                 for order in &cancelled {
                     println!("      - Order #{} ({:?})", order.order_id, order.status);
                 }
@@ -55,7 +57,10 @@ async fn main() -> Result<()> {
     // 1b. Cancel any algo (SL/TP) orders for ORDIUSDT
     match AlgoOrdersClient::cancel_algo_order(&client, None, Some("ORDIUSDT")).await {
         Ok(resp) => {
-            println!("   ✅ Cancelled algo orders for ORDIUSDT: code={}", resp.code);
+            println!(
+                "   ✅ Cancelled algo orders for ORDIUSDT: code={}",
+                resp.code
+            );
         }
         Err(e) => {
             println!("   ⚠️  No algo orders to cancel (or error): {}", e);
@@ -67,7 +72,10 @@ async fn main() -> Result<()> {
         Ok(Some(position)) => {
             let abs_qty = position.position_amt.abs();
             if abs_qty > Decimal::ZERO {
-                println!("   📊 Open ORDI position: {} contracts", position.position_amt);
+                println!(
+                    "   📊 Open ORDI position: {} contracts",
+                    position.position_amt
+                );
 
                 // Close by placing opposite market order
                 let close_side = if position.position_amt > Decimal::ZERO {
@@ -76,13 +84,15 @@ async fn main() -> Result<()> {
                     Side::Buy
                 };
 
-                let close_order = NewOrderRequest::market("ORDIUSDT", close_side, abs_qty)
-                    .with_reduce_only();
+                let close_order =
+                    NewOrderRequest::market("ORDIUSDT", close_side, abs_qty).with_reduce_only();
 
                 match OrdersClient::place_order(&client, &close_order).await {
                     Ok(resp) => {
-                        println!("   ✅ Closed ORDI position: Order #{} (status: {:?})",
-                            resp.order_id, resp.status);
+                        println!(
+                            "   ✅ Closed ORDI position: Order #{} (status: {:?})",
+                            resp.order_id, resp.status
+                        );
                     }
                     Err(e) => {
                         println!("   ❌ Failed to close ORDI position: {}", e);
@@ -109,9 +119,15 @@ async fn main() -> Result<()> {
 
     // 2a. Set leverage to 10x for DOTUSDT
     let leverage_params = "symbol=DOTUSDT&leverage=10";
-    match client.post_signed("/fapi/v1/leverage", leverage_params).await {
+    match client
+        .post_signed("/fapi/v1/leverage", leverage_params)
+        .await
+    {
         Ok(val) => {
-            let sym = val.get("symbol").and_then(|v| v.as_str()).unwrap_or("DOTUSDT");
+            let sym = val
+                .get("symbol")
+                .and_then(|v| v.as_str())
+                .unwrap_or("DOTUSDT");
             let lev = val.get("leverage").and_then(|v| v.as_i64()).unwrap_or(10);
             println!("   ✅ Leverage set: {} = {}x", sym, lev);
         }
@@ -146,15 +162,22 @@ async fn main() -> Result<()> {
 
     // 2d. Calculate quantity based on available balance
     // Use raw JSON to avoid deserialization issues with v3 API
-    let balance_raw = client.get_signed("/fapi/v3/balance", "").await
+    let balance_raw = client
+        .get_signed("/fapi/v3/balance", "")
+        .await
         .context("Failed to get balance")?;
 
     let usdt_balance: Decimal = balance_raw
         .as_array()
         .and_then(|arr| {
-            arr.iter().find(|b| b.get("asset").and_then(|a| a.as_str()) == Some("USDT"))
+            arr.iter()
+                .find(|b| b.get("asset").and_then(|a| a.as_str()) == Some("USDT"))
         })
-        .and_then(|b| b.get("availableBalance").and_then(|v| v.as_str()).and_then(|s| s.parse().ok()))
+        .and_then(|b| {
+            b.get("availableBalance")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse().ok())
+        })
         .unwrap_or(Decimal::ZERO);
 
     println!("   💰 Available USDT balance: {}", usdt_balance);
@@ -165,7 +188,10 @@ async fn main() -> Result<()> {
     let notional = position_usdt * dec!(10);
     let quantity = (notional / dot_price).round_dp(1); // DOT has 1 decimal precision
 
-    println!("   📐 Position size: {} DOT (≈ {} USDT notional with 10x)", quantity, notional);
+    println!(
+        "   📐 Position size: {} DOT (≈ {} USDT notional with 10x)",
+        quantity, notional
+    );
 
     if quantity <= Decimal::ZERO {
         anyhow::bail!("Calculated quantity is zero — insufficient balance");
@@ -181,12 +207,30 @@ async fn main() -> Result<()> {
         Ok(resp) => {
             // Parse response from raw JSON for robustness
             let order_id = resp.get("orderId").and_then(|v| v.as_i64()).unwrap_or(0);
-            let status = resp.get("status").and_then(|v| v.as_str()).unwrap_or("UNKNOWN");
-            let symbol = resp.get("symbol").and_then(|v| v.as_str()).unwrap_or("DOTUSDT");
+            let status = resp
+                .get("status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("UNKNOWN");
+            let symbol = resp
+                .get("symbol")
+                .and_then(|v| v.as_str())
+                .unwrap_or("DOTUSDT");
             let side = resp.get("side").and_then(|v| v.as_str()).unwrap_or("BUY");
-            let orig_qty = resp.get("origQty").and_then(|v| v.as_str()).and_then(|s| s.parse::<Decimal>().ok()).unwrap_or(quantity);
-            let exec_qty = resp.get("executedQty").and_then(|v| v.as_str()).and_then(|s| s.parse::<Decimal>().ok()).unwrap_or(Decimal::ZERO);
-            let avg_price = resp.get("avgPrice").and_then(|v| v.as_str()).and_then(|s| s.parse::<Decimal>().ok()).unwrap_or(Decimal::ZERO);
+            let orig_qty = resp
+                .get("origQty")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse::<Decimal>().ok())
+                .unwrap_or(quantity);
+            let exec_qty = resp
+                .get("executedQty")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse::<Decimal>().ok())
+                .unwrap_or(Decimal::ZERO);
+            let avg_price = resp
+                .get("avgPrice")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse::<Decimal>().ok())
+                .unwrap_or(Decimal::ZERO);
 
             println!("   ✅ BUY order placed successfully!");
             println!("      Order ID: {}", order_id);

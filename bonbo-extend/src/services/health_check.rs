@@ -1,7 +1,7 @@
 //! Health Check Service — periodically checks system health.
 
-use crate::plugin::{PluginContext, PluginMetadata, ServicePlugin};
 use async_trait::async_trait;
+use bonbo_extend_core::{PluginContext, PluginMetadata, ServicePlugin};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::RwLock;

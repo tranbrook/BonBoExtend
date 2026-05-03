@@ -1,4 +1,4 @@
-//! Error types for bonbo-extend.
+//! Error types for bonbo-extend-core.
 
 use thiserror::Error;
 

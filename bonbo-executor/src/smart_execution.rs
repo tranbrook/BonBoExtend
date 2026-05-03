@@ -19,8 +19,10 @@ use serde::{Deserialize, Serialize};
 /// Execution algorithm type.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ExecutionAlgo {
     /// Immediate execution (default). Acceptable for orders < 0.1% of 24h volume.
+    #[default]
     Market,
     /// Split into N equal slices, executed at fixed time intervals.
     Twp {
@@ -45,12 +47,6 @@ pub enum ExecutionAlgo {
         /// Re-post delay in seconds.
         interval_secs: u64,
     },
-}
-
-impl Default for ExecutionAlgo {
-    fn default() -> Self {
-        Self::Market
-    }
 }
 
 /// Parameters for smart execution.
@@ -90,7 +86,10 @@ impl ExecutionParams {
             symbol: symbol.to_string(),
             side,
             total_qty: qty,
-            algo: ExecutionAlgo::Twp { slices, interval_secs },
+            algo: ExecutionAlgo::Twp {
+                slices,
+                interval_secs,
+            },
             max_participation_rate: 0.10,
             reduce_only: false,
         }
@@ -210,11 +209,7 @@ impl ExecutionReport {
 
     /// Generate recommendation based on execution metrics.
     pub fn recommend(&self) -> String {
-        let notional: f64 = self
-            .filled_qty
-            .to_string()
-            .parse::<f64>()
-            .unwrap_or(0.0)
+        let notional: f64 = self.filled_qty.to_string().parse::<f64>().unwrap_or(0.0)
             * self.vwap.to_string().parse::<f64>().unwrap_or(1.0);
 
         if notional < 100.0 {
@@ -255,8 +250,8 @@ pub fn select_optimal_algo(
     // Rule 2: Small order — limit at bid saves fees
     if order_notional_usd < avg_trade_usd * 2.0 {
         return ExecutionAlgo::AdaptiveLimit {
-            offset_bps: 0,        // at mid
-            timeout_secs: 120,    // 2 min before sweep
+            offset_bps: 0,     // at mid
+            timeout_secs: 120, // 2 min before sweep
             max_slippage_bps: 5,
         };
     }
@@ -313,7 +308,10 @@ mod tests {
     fn test_algo_selection_large_order() {
         let algo = select_optimal_algo(50_000.0, 120.0, 50_000_000.0);
         // Should be TWAP with many slices or Iceberg
-        assert!(matches!(algo, ExecutionAlgo::Twp { .. } | ExecutionAlgo::Iceberg { .. }));
+        assert!(matches!(
+            algo,
+            ExecutionAlgo::Twp { .. } | ExecutionAlgo::Iceberg { .. }
+        ));
     }
 
     #[test]

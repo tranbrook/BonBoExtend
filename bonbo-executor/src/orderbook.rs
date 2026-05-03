@@ -74,10 +74,7 @@ impl OrderBookSnapshot {
 
         Some(Self {
             symbol: symbol.to_string(),
-            timestamp_ms: value
-                .get("E")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0),
+            timestamp_ms: value.get("E").and_then(|v| v.as_i64()).unwrap_or(0),
             bids: bid_levels,
             asks: ask_levels,
         })
@@ -324,8 +321,12 @@ impl OrderBookSnapshot {
             if slip_bps > max_slippage_bps {
                 // Binary search within this level
                 let partial = self.binary_search_max_qty(
-                    side, mid, max_slippage_bps,
-                    cumulative_qty, cumulative_cost, level,
+                    side,
+                    mid,
+                    max_slippage_bps,
+                    cumulative_qty,
+                    cumulative_cost,
+                    level,
                 );
                 return cumulative_qty + partial;
             }
@@ -421,8 +422,6 @@ fn spread_f64_to_bps(spread: Decimal, mid: Decimal) -> f64 {
     decimal_to_f64(spread / mid) * 10_000.0
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -484,7 +483,11 @@ mod tests {
         let est = book.estimate_buy_slippage(Decimal::from(100)).unwrap();
         assert_eq!(est.vwap, Decimal::from_str("0.06052").unwrap());
         assert_eq!(est.levels_consumed, 1);
-        assert!(est.slippage_bps < 1.0, "slippage_bps = {}", est.slippage_bps);
+        assert!(
+            est.slippage_bps < 1.0,
+            "slippage_bps = {}",
+            est.slippage_bps
+        );
         assert_eq!(est.fill_rate, 1.0);
     }
 

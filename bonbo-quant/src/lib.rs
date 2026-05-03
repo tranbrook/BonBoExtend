@@ -3,6 +3,7 @@
 pub mod advanced_strategies;
 pub mod engine;
 pub mod models;
+pub mod regime_strategies;
 pub mod report;
 pub mod strategies;
 pub mod strategy;
@@ -16,6 +17,7 @@ pub use engine::BacktestEngine;
 pub use models::{
     BacktestConfig, FillModel, Order, OrderSide, OrderType, Position, Trade, TradeSide,
 };
+pub use regime_strategies::{RegimeAdaptiveStrategy, SuperSmootherSlopeStrategy};
 pub use report::BacktestReport;
 pub use strategies::{
     BollingerBandsStrategy, BreakoutStrategy, DollarCostAverageStrategy, GridStrategy,

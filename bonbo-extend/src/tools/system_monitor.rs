@@ -1,7 +1,7 @@
 //! System Monitor Plugin — system health and resource monitoring.
 
-use crate::plugin::*;
 use async_trait::async_trait;
+use bonbo_extend_core::*;
 
 /// Plugin for system monitoring tools.
 pub struct SystemMonitorPlugin {

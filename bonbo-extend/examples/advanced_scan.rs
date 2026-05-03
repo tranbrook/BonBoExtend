@@ -15,20 +15,19 @@
 //! Usage: cargo run -p bonbo-extend --example advanced_scan
 
 use anyhow::Result;
-use bonbo_data::{self as bonbo_data};
 use bonbo_data::MarketDataFetcher;
+use bonbo_data::{self as bonbo_data};
 use bonbo_risk::var::compute_var;
 use bonbo_ta::OhlcvCandle;
 use bonbo_ta::indicators::{
-    Alma, Cmo, HurstExponent, IncrementalIndicator, LaguerreRsi, MarketCharacter,
-    RoofingFilter, SuperSmoother,
+    Alma, Cmo, HurstExponent, IncrementalIndicator, LaguerreRsi, MarketCharacter, RoofingFilter,
+    SuperSmoother,
 };
 
 const SYMBOLS: &[&str] = &[
-    "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT",
-    "ADAUSDT", "AVAXUSDT", "DOGEUSDT", "LINKUSDT", "DOTUSDT",
-    "LTCUSDT", "UNIUSDT", "ATOMUSDT", "ETCUSDT", "FILUSDT",
-    "APTUSDT", "ARBUSDT", "OPUSDT", "NEARUSDT", "SUIUSDT",
+    "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "AVAXUSDT", "DOGEUSDT",
+    "LINKUSDT", "DOTUSDT", "LTCUSDT", "UNIUSDT", "ATOMUSDT", "ETCUSDT", "FILUSDT", "APTUSDT",
+    "ARBUSDT", "OPUSDT", "NEARUSDT", "SUIUSDT",
 ];
 
 fn separator(title: &str) {
@@ -95,9 +94,9 @@ struct AdvancedAnalysis {
     bb_percent_b: f64,
 
     // Derived signals
-    trend_score: f64,       // -100 to +100 (Ehlers trend system)
-    reversion_score: f64,   // -100 to +100 (mean reversion system)
-    composite_score: f64,   // 0-100 final score
+    trend_score: f64,     // -100 to +100 (Ehlers trend system)
+    reversion_score: f64, // -100 to +100 (mean reversion system)
+    composite_score: f64, // 0-100 final score
     recommended_strategy: &'static str,
 }
 
@@ -365,10 +364,15 @@ fn analyze_symbol(symbol: &str, candles: &[OhlcvCandle]) -> Option<AdvancedAnaly
 #[tokio::main]
 async fn main() -> Result<()> {
     separator("BONBO EXTEND — ADVANCED MARKET SCANNER V2");
-    println!("  🧠 Financial Hacker Indicators: ALMA, SuperSmoother, Hurst, LaguerreRSI, CMO, Roofing");
+    println!(
+        "  🧠 Financial Hacker Indicators: ALMA, SuperSmoother, Hurst, LaguerreRSI, CMO, Roofing"
+    );
     println!("  📊 Strategies: Ehlers Trend Following, Enhanced Mean Reversion");
     println!("  📡 Scanning {} symbols via Binance API", SYMBOLS.len());
-    println!("  🕐 {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC"));
+    println!(
+        "  🕐 {}",
+        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
+    );
 
     let fetcher = MarketDataFetcher::new();
 
@@ -435,20 +439,38 @@ async fn main() -> Result<()> {
 
     println!();
     println!("  📊 Regime Distribution:");
-    println!("     📈 Trending:        {} symbols ({:.0}%)", trending, trending as f64 / analyses.len() as f64 * 100.0);
-    println!("     🔄 Mean-Reverting:  {} symbols ({:.0}%)", mean_rev, mean_rev as f64 / analyses.len() as f64 * 100.0);
-    println!("     🚫 Random Walk:     {} symbols ({:.0}%)", random, random as f64 / analyses.len() as f64 * 100.0);
+    println!(
+        "     📈 Trending:        {} symbols ({:.0}%)",
+        trending,
+        trending as f64 / analyses.len() as f64 * 100.0
+    );
+    println!(
+        "     🔄 Mean-Reverting:  {} symbols ({:.0}%)",
+        mean_rev,
+        mean_rev as f64 / analyses.len() as f64 * 100.0
+    );
+    println!(
+        "     🚫 Random Walk:     {} symbols ({:.0}%)",
+        random,
+        random as f64 / analyses.len() as f64 * 100.0
+    );
     println!();
-    println!("  Overall: {}", if trending > mean_rev && trending > random {
-        "📈 TRENDING MARKET — Use Ehlers Trend Following"
-    } else if mean_rev > trending {
-        "🔄 MEAN-REVERTING — Use Enhanced Mean Reversion"
-    } else {
-        "🚫 MIXED/RANDOM — Trade with caution, small positions"
-    });
+    println!(
+        "  Overall: {}",
+        if trending > mean_rev && trending > random {
+            "📈 TRENDING MARKET — Use Ehlers Trend Following"
+        } else if mean_rev > trending {
+            "🔄 MEAN-REVERTING — Use Enhanced Mean Reversion"
+        } else {
+            "🚫 MIXED/RANDOM — Trade with caution, small positions"
+        }
+    );
 
     println!();
-    println!("  {:<12} {:>8} {:>10} {:>12} {:>10} {:>8}", "Symbol", "Hurst", "Regime", "ALMA Signal", "LRSI", "Score");
+    println!(
+        "  {:<12} {:>8} {:>10} {:>12} {:>10} {:>8}",
+        "Symbol", "Hurst", "Regime", "ALMA Signal", "LRSI", "Score"
+    );
     println!("  {}", "─".repeat(66));
     for a in &analyses {
         let alma_icon = match a.alma_signal {
@@ -589,7 +611,12 @@ async fn main() -> Result<()> {
             a.recommended_strategy
         ));
 
-        println!("  💰 Price:            {} ({:+.1}% 24h, {:+.1}% 7d)", usd(a.price), a.change_24h, a.change_7d);
+        println!(
+            "  💰 Price:            {} ({:+.1}% 24h, {:+.1}% 7d)",
+            usd(a.price),
+            a.change_24h,
+            a.change_7d
+        );
         println!();
         println!("  📊 ── Financial Hacker Indicators ──");
         println!(
@@ -608,43 +635,83 @@ async fn main() -> Result<()> {
                 AlmaSignal::Neutral => "",
             }
         );
-        println!("     SuperSmoother(20): {}   Slope: {:+.3}%", usd(a.supersmoother), a.ss_slope);
-        println!("     Hurst Exponent:    {:.3}  →  {}",
-            a.hurst,
-            a.market_character
+        println!(
+            "     SuperSmoother(20): {}   Slope: {:+.3}%",
+            usd(a.supersmoother),
+            a.ss_slope
         );
-        println!("     Laguerre RSI:      {:.3}  {}",
+        println!(
+            "     Hurst Exponent:    {:.3}  →  {}",
+            a.hurst, a.market_character
+        );
+        println!(
+            "     Laguerre RSI:      {:.3}  {}",
             a.laguerre_rsi,
-            if a.laguerre_rsi > 0.8 { "← OVERBOUGHT" }
-            else if a.laguerre_rsi < 0.2 { "← OVERSOLD" }
-            else { "" }
+            if a.laguerre_rsi > 0.8 {
+                "← OVERBOUGHT"
+            } else if a.laguerre_rsi < 0.2 {
+                "← OVERSOLD"
+            } else {
+                ""
+            }
         );
         println!("     CMO(14):           {:+.1}", a.cmo);
         println!("     Roofing Filter:    {:.4}", a.roofing);
         println!();
         println!("  📊 ── Standard Indicators ──");
-        println!("     RSI(14):           {:.1}  {}", a.rsi14,
-            if a.rsi14 < 30.0 { "← OVERSOLD" }
-            else if a.rsi14 > 70.0 { "← OVERBOUGHT" }
-            else { "" }
+        println!(
+            "     RSI(14):           {:.1}  {}",
+            a.rsi14,
+            if a.rsi14 < 30.0 {
+                "← OVERSOLD"
+            } else if a.rsi14 > 70.0 {
+                "← OVERBOUGHT"
+            } else {
+                ""
+            }
         );
-        println!("     MACD:              {}", if a.macd_bullish { "🟢 Bullish" } else { "🔴 Bearish" });
-        println!("     BB %B:             {:.2}  {}", a.bb_percent_b,
-            if a.bb_percent_b < 0.2 { "← BUY ZONE" }
-            else if a.bb_percent_b > 0.8 { "← SELL ZONE" }
-            else { "" }
+        println!(
+            "     MACD:              {}",
+            if a.macd_bullish {
+                "🟢 Bullish"
+            } else {
+                "🔴 Bearish"
+            }
+        );
+        println!(
+            "     BB %B:             {:.2}  {}",
+            a.bb_percent_b,
+            if a.bb_percent_b < 0.2 {
+                "← BUY ZONE"
+            } else if a.bb_percent_b > 0.8 {
+                "← SELL ZONE"
+            } else {
+                ""
+            }
         );
         println!();
         println!("  📊 ── Strategy Scores ──");
-        println!("     Trend Score:       {:+.0}/100  {}", a.trend_score,
-            if a.trend_score > 50.0 { "🟢 STRONG" }
-            else if a.trend_score > 20.0 { "🟡 MODERATE" }
-            else { "⚪ WEAK" }
+        println!(
+            "     Trend Score:       {:+.0}/100  {}",
+            a.trend_score,
+            if a.trend_score > 50.0 {
+                "🟢 STRONG"
+            } else if a.trend_score > 20.0 {
+                "🟡 MODERATE"
+            } else {
+                "⚪ WEAK"
+            }
         );
-        println!("     Reversion Score:   {:+.0}/100  {}", a.reversion_score,
-            if a.reversion_score > 40.0 { "🟢 STRONG" }
-            else if a.reversion_score > 20.0 { "🟡 MODERATE" }
-            else { "⚪ WEAK" }
+        println!(
+            "     Reversion Score:   {:+.0}/100  {}",
+            a.reversion_score,
+            if a.reversion_score > 40.0 {
+                "🟢 STRONG"
+            } else if a.reversion_score > 20.0 {
+                "🟡 MODERATE"
+            } else {
+                "⚪ WEAK"
+            }
         );
 
         // Risk metrics
@@ -659,9 +726,17 @@ async fn main() -> Result<()> {
         let var95 = compute_var(&returns, 0.95);
         let mean_ret = returns.iter().sum::<f64>() / returns.len().max(1) as f64;
         let std_ret = if returns.len() > 1 {
-            (returns.iter().map(|r| (r - mean_ret).powi(2)).sum::<f64>() / (returns.len() - 1) as f64).sqrt()
-        } else { 0.02 };
-        let sharpe = if std_ret > 0.0 { (mean_ret * 365.0) / (std_ret * 365.0_f64.sqrt()) } else { 0.0 };
+            (returns.iter().map(|r| (r - mean_ret).powi(2)).sum::<f64>()
+                / (returns.len() - 1) as f64)
+                .sqrt()
+        } else {
+            0.02
+        };
+        let sharpe = if std_ret > 0.0 {
+            (mean_ret * 365.0) / (std_ret * 365.0_f64.sqrt())
+        } else {
+            0.0
+        };
         let kelly_pct = {
             let wr = returns.iter().filter(|r| **r > 0.0).count() as f64 / returns.len() as f64;
             let nw = returns.iter().filter(|r| **r > 0.0).count().max(1);
@@ -674,10 +749,17 @@ async fn main() -> Result<()> {
 
         println!();
         println!("  ⚠️  ── Risk Assessment ──");
-        println!("     VaR (95%):         {:.1}%  (${:.0} per $10K)", var95 * 100.0, var95 * 10000.0);
+        println!(
+            "     VaR (95%):         {:.1}%  (${:.0} per $10K)",
+            var95 * 100.0,
+            var95 * 10000.0
+        );
         println!("     Sharpe (90d):      {:.2}", sharpe);
         println!("     Kelly (half):      {:.1}%", kelly_pct);
-        println!("     Suggested pos:     ${:.0} on $10,000", kelly_pct.max(0.0) / 100.0 * 10000.0);
+        println!(
+            "     Suggested pos:     ${:.0} on $10,000",
+            kelly_pct.max(0.0) / 100.0 * 10000.0
+        );
     }
 
     // ══════════════════════════════════════════════════
@@ -698,21 +780,51 @@ async fn main() -> Result<()> {
 
         println!();
         println!("  ┌────────────────────────────────────────────────────────────────────┐");
-        println!("  │  🏆 Best Trade: {}                                        ", best.symbol);
-        println!("  │  📊 Score:     {:.0}/100 — {}                             ", best.composite_score, verdict);
-        println!("  │  💰 Price:     {} ({:+.1}% 24h, {:+.1}% 7d)                  ", usd(best.price), best.change_24h, best.change_7d);
-        println!("  │  🧠 Strategy:  {}                  ", best.recommended_strategy);
-        println!("  │  📈 Hurst:     {:.3} ({})                              ", best.hurst, best.market_character);
-        println!("  │  📏 ALMA:      {:?}                          ", best.alma_signal);
-        println!("  │  📶 SS Slope:  {:+.3}%                                     ", best.ss_slope);
-        println!("  │  🔄 LRSI:     {:.3}  |  CMO: {:+.1}                        ", best.laguerre_rsi, best.cmo);
+        println!(
+            "  │  🏆 Best Trade: {}                                        ",
+            best.symbol
+        );
+        println!(
+            "  │  📊 Score:     {:.0}/100 — {}                             ",
+            best.composite_score, verdict
+        );
+        println!(
+            "  │  💰 Price:     {} ({:+.1}% 24h, {:+.1}% 7d)                  ",
+            usd(best.price),
+            best.change_24h,
+            best.change_7d
+        );
+        println!(
+            "  │  🧠 Strategy:  {}                  ",
+            best.recommended_strategy
+        );
+        println!(
+            "  │  📈 Hurst:     {:.3} ({})                              ",
+            best.hurst, best.market_character
+        );
+        println!(
+            "  │  📏 ALMA:      {:?}                          ",
+            best.alma_signal
+        );
+        println!(
+            "  │  📶 SS Slope:  {:+.3}%                                     ",
+            best.ss_slope
+        );
+        println!(
+            "  │  🔄 LRSI:     {:.3}  |  CMO: {:+.1}                        ",
+            best.laguerre_rsi, best.cmo
+        );
         println!("  └────────────────────────────────────────────────────────────────────┘");
 
         // Top 3 comparison
         println!();
         println!("  📊 Top 3 Comparison (Financial Hacker Ranking):");
         for (i, a) in analyses[..3.min(analyses.len())].iter().enumerate() {
-            let medal = match i { 0 => "🥇", 1 => "🥈", _ => "🥉" };
+            let medal = match i {
+                0 => "🥇",
+                1 => "🥈",
+                _ => "🥉",
+            };
             println!(
                 "     {} {:<10} Score:{:>5.0} | Hurst:{:.2} {} | ALMA:{:?} | LRSI:{:.2} | Strategy: {}",
                 medal,
@@ -736,7 +848,10 @@ async fn main() -> Result<()> {
             println!();
             println!("  🚫 AVOID (Random Walk — no predictive signal):");
             for a in &avoid {
-                println!("     ⛔ {:<10} Hurst={:.2} — no exploitable pattern", a.symbol, a.hurst);
+                println!(
+                    "     ⛔ {:<10} Hurst={:.2} — no exploitable pattern",
+                    a.symbol, a.hurst
+                );
             }
         }
     }

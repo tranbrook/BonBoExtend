@@ -24,10 +24,8 @@
 //! | OFI-aware sizing     | No                   | Scale by signal strength  |
 
 use crate::execution_algo::{ExecutionReport, FillResult, OrderPlacer};
-use crate::execution_errors::{
-    ErrorDecision, ExecutionError, PartialFillStrategy, decide, handle_partial_fill,
-};
-use crate::ofi::{OfiConfig, OfiScore, OfiSignal};
+use crate::execution_errors::{ErrorDecision, ExecutionError, PartialFillStrategy, decide};
+use crate::ofi::OfiScore;
 use crate::orderbook::{OrderBookSnapshot, Side};
 use crate::risk_guards::{CumulativeRiskState, ExecutionRiskLimits, PreTradeCheck};
 
@@ -256,18 +254,32 @@ pub async fn execute_smart_market(
         phase: 1,
         name: "READ".into(),
         duration_us: t1.elapsed().as_micros() as u64,
-        outcome: format!("ofi={:.3} spread={:.1}bps imb={:.3}", ofi_score.imbalance, spread_bps, ofi_score.imbalance),
+        outcome: format!(
+            "ofi={:.3} spread={:.1}bps imb={:.3}",
+            ofi_score.imbalance, spread_bps, ofi_score.imbalance
+        ),
     });
 
     // ═══════════════════════════════════════════════════════════
     // PRE-TRADE GATES
     // ═══════════════════════════════════════════════════════════
-    let pre = PreTradeCheck::run(symbol, side, total_qty, arrival_price, risk_state, risk_limits);
+    let pre = PreTradeCheck::run(
+        symbol,
+        side,
+        total_qty,
+        arrival_price,
+        risk_state,
+        risk_limits,
+    );
     if !pre.allowed {
         anyhow::bail!("SmartMarket pre-trade failed: {:?}", pre.reason);
     }
     if spread_bps > config.abort_spread_bps {
-        anyhow::bail!("SmartMarket abort: spread {:.1}bps > {:.1}bps", spread_bps, config.abort_spread_bps);
+        anyhow::bail!(
+            "SmartMarket abort: spread {:.1}bps > {:.1}bps",
+            spread_bps,
+            config.abort_spread_bps
+        );
     }
     if crate::risk_guards::is_kill_switch_active() {
         anyhow::bail!("SmartMarket abort: kill switch active");
@@ -288,7 +300,12 @@ pub async fn execute_smart_market(
 
     tracing::info!(
         "📊 SMART-MARKET {} {:?} {} | {} | ofi={:.3} spread={:.1}bps",
-        symbol, side, total_qty, book_state, ofi_score.imbalance, spread_bps,
+        symbol,
+        side,
+        total_qty,
+        book_state,
+        ofi_score.imbalance,
+        spread_bps,
     );
 
     // ═══════════════════════════════════════════════════════════
@@ -316,7 +333,10 @@ pub async fn execute_smart_market(
             let def_price = compute_limit_price(&book, side, 0.0, config.price_decimals);
             limit_price_posted = Some(def_price);
 
-            match placer.place_limit(symbol, side, reduced_qty, def_price).await {
+            match placer
+                .place_limit(symbol, side, reduced_qty, def_price)
+                .await
+            {
                 Ok(fill) => {
                     got_maker = fill.is_maker;
                     fills.push(fill);
@@ -349,7 +369,10 @@ pub async fn execute_smart_market(
             let lim_price = compute_limit_price(&book, side, offset_bps, config.price_decimals);
             limit_price_posted = Some(lim_price);
 
-            match placer.place_limit(symbol, side, effective_qty, lim_price).await {
+            match placer
+                .place_limit(symbol, side, effective_qty, lim_price)
+                .await
+            {
                 Ok(fill) => {
                     got_maker = fill.is_maker;
                     let fp = fill.fill_price;
@@ -398,7 +421,10 @@ pub async fn execute_smart_market(
             phase: 4,
             name: "WAIT".into(),
             duration_us: t4.elapsed().as_micros() as u64,
-            outcome: format!("waited {}ms, remaining={remaining}", wait_start.elapsed().as_millis()),
+            outcome: format!(
+                "waited {}ms, remaining={remaining}",
+                wait_start.elapsed().as_millis()
+            ),
         });
     } else {
         phases.push(SmartMarketPhaseRecord {
@@ -419,28 +445,33 @@ pub async fn execute_smart_market(
 
     if remaining > Decimal::ZERO {
         // Re-fetch book for fresh slippage estimate
-        let fresh_book = placer.get_orderbook(symbol).await.unwrap_or_else(|_| book.clone());
+        let fresh_book = placer
+            .get_orderbook(symbol)
+            .await
+            .unwrap_or_else(|_| book.clone());
         let slip_est = match side {
             Side::Buy => fresh_book.estimate_buy_slippage(remaining),
             Side::Sell => fresh_book.estimate_sell_slippage(remaining),
         };
 
-        if let Some(ref est) = slip_est {
-            if est.slippage_bps > config.max_sweep_slippage_bps {
-                tracing::warn!(
-                    "SmartMarket: sweep slippage {:.1}bps > max {:.1}bps, reducing qty",
-                    est.slippage_bps, config.max_sweep_slippage_bps,
+        if let Some(ref est) = slip_est
+            && est.slippage_bps > config.max_sweep_slippage_bps
+        {
+            tracing::warn!(
+                "SmartMarket: sweep slippage {:.1}bps > max {:.1}bps, reducing qty",
+                est.slippage_bps,
+                config.max_sweep_slippage_bps,
+            );
+            // Reduce sweep quantity to max that fits within slippage budget
+            let max_qty = fresh_book.max_market_order(side, config.max_sweep_slippage_bps);
+            if max_qty > Decimal::ZERO {
+                remaining = remaining.min(max_qty);
+            } else {
+                anyhow::bail!(
+                    "SmartMarket sweep abort: {:.1}bps > {:.1}bps, no safe qty",
+                    est.slippage_bps,
+                    config.max_sweep_slippage_bps,
                 );
-                // Reduce sweep quantity to max that fits within slippage budget
-                let max_qty = fresh_book.max_market_order(side, config.max_sweep_slippage_bps);
-                if max_qty > Decimal::ZERO {
-                    remaining = remaining.min(max_qty);
-                } else {
-                    anyhow::bail!(
-                        "SmartMarket sweep abort: {:.1}bps > {:.1}bps, no safe qty",
-                        est.slippage_bps, config.max_sweep_slippage_bps,
-                    );
-                }
             }
         }
 
@@ -452,7 +483,11 @@ pub async fn execute_smart_market(
                     phase: 5,
                     name: "FIRE".into(),
                     duration_us: t5.elapsed().as_micros() as u64,
-                    outcome: format!("SWEEP {} @ {}", remaining, fills.last().expect("fills non-empty after push").fill_price),
+                    outcome: format!(
+                        "SWEEP {} @ {}",
+                        remaining,
+                        fills.last().expect("fills non-empty after push").fill_price
+                    ),
                 });
             }
             Err(e) => {
@@ -466,7 +501,10 @@ pub async fn execute_smart_market(
 
                 // Try partial fill recovery
                 if filled_qty > Decimal::ZERO {
-                    tracing::warn!("SmartMarket: sweep failed but got {} from limit", filled_qty);
+                    tracing::warn!(
+                        "SmartMarket: sweep failed but got {} from limit",
+                        filled_qty
+                    );
                 }
             }
         }
@@ -490,14 +528,23 @@ pub async fn execute_smart_market(
     }
 
     let base_report = ExecutionReport::build(
-        symbol, side, "SMART_MARKET", total_qty, arrival_price, fills, pipeline_start,
+        symbol,
+        side,
+        "SMART_MARKET",
+        total_qty,
+        arrival_price,
+        fills,
+        pipeline_start,
     );
 
     let total_latency_us = pipeline_start.elapsed().as_micros() as u64;
 
     tracing::info!(
         "✅ SMART-MARKET DONE: {} | {} | {} slices | {:.1}bps IS | {total_latency_us}µs",
-        symbol, book_state, base_report.slices_executed, base_report.is_bps,
+        symbol,
+        book_state,
+        base_report.slices_executed,
+        base_report.is_bps,
     );
 
     Ok(SmartMarketReport {
@@ -579,13 +626,12 @@ fn compute_limit_price(
     price_decimals: u32,
 ) -> Decimal {
     let mid = book.mid_price().unwrap_or(Decimal::ONE);
-    let offset = mid
-        * Decimal::from_f64_retain(offset_bps).unwrap_or(Decimal::ZERO)
-        / Decimal::from(10000);
+    let offset =
+        mid * Decimal::from_f64_retain(offset_bps).unwrap_or(Decimal::ZERO) / Decimal::from(10000);
 
     let raw_price = match side {
-        Side::Buy => mid - offset,         // Buy lower than mid
-        Side::Sell => mid + offset,        // Sell higher than mid
+        Side::Buy => mid - offset,  // Buy lower than mid
+        Side::Sell => mid + offset, // Sell higher than mid
     };
 
     // Round to tick size (price_decimals)
@@ -652,14 +698,18 @@ mod tests {
         let mut bids: Vec<PriceLevel> = bid_qtys
             .iter()
             .enumerate()
-            .map(|(i, q)| PriceLevel::new(Decimal::from(100 - i as i64), Decimal::from_str(q).unwrap()))
+            .map(|(i, q)| {
+                PriceLevel::new(Decimal::from(100 - i as i64), Decimal::from_str(q).unwrap())
+            })
             .collect();
         bids.sort_by(|a, b| b.price.cmp(&a.price));
 
         let asks: Vec<PriceLevel> = ask_qtys
             .iter()
             .enumerate()
-            .map(|(i, q)| PriceLevel::new(Decimal::from(101 + i as i64), Decimal::from_str(q).unwrap()))
+            .map(|(i, q)| {
+                PriceLevel::new(Decimal::from(101 + i as i64), Decimal::from_str(q).unwrap())
+            })
             .collect();
 
         OrderBookSnapshot {
@@ -783,18 +833,32 @@ mod tests {
         let ofi = OfiScore::from_book(&book, 3);
         let qty = compute_effective_qty(Decimal::from(100), &BookState::Aggressive, &ofi);
         // Aggressive multiplier from OFI signal (likely StrongBuy or Buy)
-        assert!(qty >= Decimal::from(100), "aggressive should boost or maintain qty");
+        assert!(
+            qty >= Decimal::from(100),
+            "aggressive should boost or maintain qty"
+        );
     }
 
     #[test]
     fn test_effective_qty_defensive() {
-        let qty = compute_effective_qty(Decimal::from(100), &BookState::Defensive, &OfiScore::from_book(&make_book(&["100"], &["100"]), 1));
-        assert!(qty < Decimal::from(100), "defensive should reduce qty, got {qty}");
+        let qty = compute_effective_qty(
+            Decimal::from(100),
+            &BookState::Defensive,
+            &OfiScore::from_book(&make_book(&["100"], &["100"]), 1),
+        );
+        assert!(
+            qty < Decimal::from(100),
+            "defensive should reduce qty, got {qty}"
+        );
     }
 
     #[test]
     fn test_effective_qty_wall() {
-        let qty = compute_effective_qty(Decimal::from(100), &BookState::WallBlocking, &OfiScore::from_book(&make_book(&["100"], &["100"]), 1));
+        let qty = compute_effective_qty(
+            Decimal::from(100),
+            &BookState::WallBlocking,
+            &OfiScore::from_book(&make_book(&["100"], &["100"]), 1),
+        );
         assert_eq!(qty, Decimal::from(50), "wall blocking should halve qty");
     }
 
@@ -826,9 +890,18 @@ mod tests {
 
     #[test]
     fn test_round_to_tick() {
-        assert_eq!(round_to_tick(Decimal::from_str("100.456").unwrap(), 2), Decimal::from_str("100.46").unwrap());
-        assert_eq!(round_to_tick(Decimal::from_str("100.454").unwrap(), 2), Decimal::from_str("100.45").unwrap());
-        assert_eq!(round_to_tick(Decimal::from_str("0.061234").unwrap(), 5), Decimal::from_str("0.06123").unwrap());
+        assert_eq!(
+            round_to_tick(Decimal::from_str("100.456").unwrap(), 2),
+            Decimal::from_str("100.46").unwrap()
+        );
+        assert_eq!(
+            round_to_tick(Decimal::from_str("100.454").unwrap(), 2),
+            Decimal::from_str("100.45").unwrap()
+        );
+        assert_eq!(
+            round_to_tick(Decimal::from_str("0.061234").unwrap(), 5),
+            Decimal::from_str("0.06123").unwrap()
+        );
     }
 
     // ── BookState Display ────────────────────────────────────
@@ -862,8 +935,13 @@ mod tests {
     fn test_report_serialization() {
         let report = SmartMarketReport {
             base: ExecutionReport::build(
-                "TEST", Side::Buy, "SMART_MARKET", Decimal::ONE,
-                Decimal::ONE, vec![], Instant::now(),
+                "TEST",
+                Side::Buy,
+                "SMART_MARKET",
+                Decimal::ONE,
+                Decimal::ONE,
+                vec![],
+                Instant::now(),
             ),
             config: SmartMarketConfig::default(),
             book_state: BookState::Aggressive,

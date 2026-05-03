@@ -189,7 +189,10 @@ impl PreTradeCheck {
         let reason = if kill {
             Some("Kill switch active".to_string())
         } else if !notional_ok {
-            Some(format!("Notional ${notional} exceeds ${}", limits.max_notional_per_order))
+            Some(format!(
+                "Notional ${notional} exceeds ${}",
+                limits.max_notional_per_order
+            ))
         } else if let RiskCheckResult::Rejected(r) = risk_result {
             Some(r)
         } else {
@@ -199,7 +202,11 @@ impl PreTradeCheck {
         if allowed {
             tracing::info!(
                 "✅ Pre-trade OK: {} {:?} {} @ {} (notional=${})",
-                symbol, side, qty, estimated_price, notional
+                symbol,
+                side,
+                qty,
+                estimated_price,
+                notional
             );
         } else {
             tracing::warn!(

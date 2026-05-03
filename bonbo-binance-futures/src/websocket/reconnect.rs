@@ -4,9 +4,8 @@ use std::time::Duration;
 use tokio_tungstenite::connect_async;
 
 /// WebSocket stream type.
-pub type WsStream = tokio_tungstenite::WebSocketStream<
-    tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
->;
+pub type WsStream =
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
 /// Connect to a WebSocket URL with exponential backoff on failure.
 pub async fn connect_with_backoff(url: &str) -> anyhow::Result<WsStream> {

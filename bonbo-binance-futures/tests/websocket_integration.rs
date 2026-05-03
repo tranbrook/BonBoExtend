@@ -1,7 +1,7 @@
 //! WebSocket integration tests — message parsing and stream configuration.
 
-use bonbo_binance_futures::websocket::*;
 use bonbo_binance_futures::FuturesConfig;
+use bonbo_binance_futures::websocket::*;
 
 // ============================================================
 // StreamConfig Tests
@@ -148,7 +148,12 @@ fn test_rand_jitter_never_exceeds_max() {
     for _ in 0..100 {
         let max_ms = 1000u64;
         let jitter = reconnect::rand_jitter_for_test(max_ms);
-        assert!(jitter <= max_ms, "jitter {} exceeded max {}", jitter, max_ms);
+        assert!(
+            jitter <= max_ms,
+            "jitter {} exceeded max {}",
+            jitter,
+            max_ms
+        );
     }
 }
 
@@ -163,10 +168,22 @@ fn test_exponential_backoff_calculation() {
     let base = std::time::Duration::from_secs(1);
     let max = std::time::Duration::from_secs(60);
 
-    assert_eq!((base * 2u32.pow(0)).min(max), std::time::Duration::from_secs(1));
-    assert_eq!((base * 2u32.pow(1)).min(max), std::time::Duration::from_secs(2));
-    assert_eq!((base * 2u32.pow(5)).min(max), std::time::Duration::from_secs(32));
-    assert_eq!((base * 2u32.pow(6)).min(max), std::time::Duration::from_secs(60));
+    assert_eq!(
+        (base * 2u32.pow(0)).min(max),
+        std::time::Duration::from_secs(1)
+    );
+    assert_eq!(
+        (base * 2u32.pow(1)).min(max),
+        std::time::Duration::from_secs(2)
+    );
+    assert_eq!(
+        (base * 2u32.pow(5)).min(max),
+        std::time::Duration::from_secs(32)
+    );
+    assert_eq!(
+        (base * 2u32.pow(6)).min(max),
+        std::time::Duration::from_secs(60)
+    );
 }
 
 // ============================================================

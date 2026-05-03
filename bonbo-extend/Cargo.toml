@@ -7,6 +7,9 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
+# Core plugin framework (lightweight — traits + registry only)
+bonbo-extend-core = { path = "../bonbo-extend-core" }
+
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -22,7 +25,7 @@ serde_repr = "0.1"
 # UUID for unique IDs
 uuid = { version = "1", features = ["v4"] }
 
-# Directories
+# Directories (needed by tools for data paths)
 dirs = "5"
 
 # HTTP client (for market data tools)

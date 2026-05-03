@@ -194,14 +194,19 @@ dependencies = [
  "bonbo-data",
  "bonbo-executor",
  "bonbo-position-manager",
+ "bonbo-regime",
  "bonbo-risk",
+ "bonbo-ta",
  "chrono",
+ "reqwest",
  "rust_decimal",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "toml",
  "tracing",
+ "tracing-subscriber",
  "uuid",
 ]
 
@@ -234,10 +239,13 @@ name = "bonbo-data"
 version = "0.2.0"
 dependencies = [
  "anyhow",
+ "bonbo-binance-futures",
  "bonbo-ta",
  "chrono",
  "futures-util",
  "reqwest",
+ "rust_decimal",
+ "rust_decimal_macros",
  "serde",
  "serde_json",
  "tokio",
@@ -272,6 +280,7 @@ dependencies = [
  "bonbo-binance-futures",
  "bonbo-data",
  "bonbo-executor",
+ "bonbo-extend-core",
  "bonbo-journal",
  "bonbo-learning",
  "bonbo-quant",
@@ -298,6 +307,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "bonbo-extend-core"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "dirs",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-test",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "bonbo-extend-mcp"
 version = "0.2.0"
 dependencies = [
@@ -312,21 +339,6 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "bonbo-funding"
-version = "0.2.0"
-dependencies = [
- "anyhow",
- "bonbo-binance-futures",
- "chrono",
- "rust_decimal",
- "rust_decimal_macros",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -364,6 +376,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "bonbo-portfolio"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
 name = "bonbo-position-manager"
 version = "0.2.0"
 dependencies = [
@@ -386,6 +410,7 @@ version = "0.2.0"
 dependencies = [
  "anyhow",
  "bonbo-data",
+ "bonbo-regime",
  "bonbo-ta",
  "chrono",
  "serde",

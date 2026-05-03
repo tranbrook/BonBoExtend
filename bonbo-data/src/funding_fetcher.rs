@@ -1,7 +1,7 @@
 //! Funding rate fetcher.
 
-use bonbo_binance_futures::rest::FuturesRestClient;
 use bonbo_binance_futures::models::FundingRate;
+use bonbo_binance_futures::rest::FuturesRestClient;
 
 /// Fetches funding rate data from Binance.
 pub struct FundingFetcher;

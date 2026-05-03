@@ -286,7 +286,10 @@ impl ExecutionError {
             let parts: Vec<&str> = rest.splitn(2, " — ").collect();
             if parts.len() == 2 {
                 let code_num: i64 = parts[0].trim().parse().unwrap_or(0);
-                (BinanceErrorCode::from_code(code_num), parts[1].trim().to_string())
+                (
+                    BinanceErrorCode::from_code(code_num),
+                    parts[1].trim().to_string(),
+                )
             } else {
                 (BinanceErrorCode::Unknown, rest.to_string())
             }
@@ -313,7 +316,10 @@ impl ExecutionError {
                 current: Decimal::ZERO,
                 max: Decimal::ZERO,
             },
-            BinanceErrorCode::NewOrderRejected => Self::Rejected { code, reason: message },
+            BinanceErrorCode::NewOrderRejected => Self::Rejected {
+                code,
+                reason: message,
+            },
             _ => Self::Unknown { message },
         }
     }
@@ -375,9 +381,7 @@ impl ExecutionError {
     pub fn should_skip(&self) -> bool {
         matches!(
             self,
-            Self::SlippageExceeded { .. }
-                | Self::Rejected { .. }
-                | Self::Unknown { .. }
+            Self::SlippageExceeded { .. } | Self::Rejected { .. } | Self::Unknown { .. }
         )
     }
 
@@ -389,9 +393,9 @@ impl ExecutionError {
     /// Get suggested retry delay.
     pub fn retry_delay(&self) -> Duration {
         match self {
-            Self::RateLimited { retry_after_secs, .. } => {
-                Duration::from_secs(*retry_after_secs)
-            }
+            Self::RateLimited {
+                retry_after_secs, ..
+            } => Duration::from_secs(*retry_after_secs),
             Self::NetworkError { retry_count, .. } => {
                 let base = Duration::from_millis(500);
                 base * 2u32.pow(*retry_count.min(&5))
@@ -406,13 +410,28 @@ impl ExecutionError {
 impl fmt::Display for ExecutionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::RateLimited { code, retry_after_secs, .. } => {
+            Self::RateLimited {
+                code,
+                retry_after_secs,
+                ..
+            } => {
                 write!(f, "RATE_LIMITED({code}, retry after {retry_after_secs}s)")
             }
-            Self::PartialFill { filled_qty, remaining_qty, fill_price, .. } => {
-                write!(f, "PARTIAL_FILL(got {filled_qty} @ {fill_price}, remaining {remaining_qty})")
+            Self::PartialFill {
+                filled_qty,
+                remaining_qty,
+                fill_price,
+                ..
+            } => {
+                write!(
+                    f,
+                    "PARTIAL_FILL(got {filled_qty} @ {fill_price}, remaining {remaining_qty})"
+                )
             }
-            Self::InsufficientMargin { required, available } => {
+            Self::InsufficientMargin {
+                required,
+                available,
+            } => {
                 write!(f, "INSUFFICIENT_MARGIN(need {required}, have {available})")
             }
             Self::ExceedMaxPosition { current, max } => {
@@ -421,15 +440,30 @@ impl fmt::Display for ExecutionError {
             Self::Rejected { code, reason } => {
                 write!(f, "REJECTED({code}: {reason})")
             }
-            Self::SpreadTooWide { spread_bps, max_spread_bps } => {
-                write!(f, "SPREAD_TOO_WIDE({spread_bps:.1}bps > {max_spread_bps:.1}bps)")
+            Self::SpreadTooWide {
+                spread_bps,
+                max_spread_bps,
+            } => {
+                write!(
+                    f,
+                    "SPREAD_TOO_WIDE({spread_bps:.1}bps > {max_spread_bps:.1}bps)"
+                )
             }
-            Self::SlippageExceeded { estimated_bps, max_bps } => {
-                write!(f, "SLIPPAGE_EXCEEDED({estimated_bps:.1}bps > {max_bps:.1}bps)")
+            Self::SlippageExceeded {
+                estimated_bps,
+                max_bps,
+            } => {
+                write!(
+                    f,
+                    "SLIPPAGE_EXCEEDED({estimated_bps:.1}bps > {max_bps:.1}bps)"
+                )
             }
             Self::KillSwitched => write!(f, "KILL_SWITCHED"),
             Self::RiskCheckFailed { reason } => write!(f, "RISK_CHECK_FAILED({reason})"),
-            Self::NetworkError { message, retry_count } => {
+            Self::NetworkError {
+                message,
+                retry_count,
+            } => {
                 write!(f, "NETWORK_ERROR(retry #{retry_count}: {message})")
             }
             Self::TimestampSync { drift_ms } => {
@@ -532,7 +566,10 @@ pub async fn handle_partial_fill(
         PartialFillStrategy::LimitRest => {
             tracing::info!("PartialFill: limit-rest {remaining} of {symbol} @ {fill_price}");
             attempts = 1;
-            match placer.place_limit(symbol, side, remaining, fill_price).await {
+            match placer
+                .place_limit(symbol, side, remaining, fill_price)
+                .await
+            {
                 Ok(fill) => {
                     total_filled += fill.fill_qty;
                     total_notional += fill.fill_price * fill.fill_qty;
@@ -648,11 +685,26 @@ mod tests {
 
     #[test]
     fn test_error_code_from_code() {
-        assert_eq!(BinanceErrorCode::from_code(-1015), BinanceErrorCode::TooManyOrders);
-        assert_eq!(BinanceErrorCode::from_code(-2019), BinanceErrorCode::MarginInsufficient);
-        assert_eq!(BinanceErrorCode::from_code(-2022), BinanceErrorCode::ExceedMaxPosition);
-        assert_eq!(BinanceErrorCode::from_code(-1021), BinanceErrorCode::TimestampNotSynced);
-        assert_eq!(BinanceErrorCode::from_code(-9999), BinanceErrorCode::Other(-9999));
+        assert_eq!(
+            BinanceErrorCode::from_code(-1015),
+            BinanceErrorCode::TooManyOrders
+        );
+        assert_eq!(
+            BinanceErrorCode::from_code(-2019),
+            BinanceErrorCode::MarginInsufficient
+        );
+        assert_eq!(
+            BinanceErrorCode::from_code(-2022),
+            BinanceErrorCode::ExceedMaxPosition
+        );
+        assert_eq!(
+            BinanceErrorCode::from_code(-1021),
+            BinanceErrorCode::TimestampNotSynced
+        );
+        assert_eq!(
+            BinanceErrorCode::from_code(-9999),
+            BinanceErrorCode::Other(-9999)
+        );
     }
 
     #[test]
@@ -683,18 +735,27 @@ mod tests {
     #[test]
     fn test_from_binance_rate_limit() {
         let err = ExecutionError::from_binance_api("Binance API error: -1015 — Too many orders");
-        assert!(matches!(err, ExecutionError::RateLimited { retry_after_secs: 10, .. }));
+        assert!(matches!(
+            err,
+            ExecutionError::RateLimited {
+                retry_after_secs: 10,
+                ..
+            }
+        ));
     }
 
     #[test]
     fn test_from_binance_margin() {
-        let err = ExecutionError::from_binance_api("Binance API error: -2019 — Margin insufficient");
+        let err =
+            ExecutionError::from_binance_api("Binance API error: -2019 — Margin insufficient");
         assert!(matches!(err, ExecutionError::InsufficientMargin { .. }));
     }
 
     #[test]
     fn test_from_binance_timestamp() {
-        let err = ExecutionError::from_binance_api("Binance API error: -1021 — Timestamp for this request was 1000ms ahead");
+        let err = ExecutionError::from_binance_api(
+            "Binance API error: -1021 — Timestamp for this request was 1000ms ahead",
+        );
         assert!(matches!(err, ExecutionError::TimestampSync { .. }));
     }
 
@@ -729,52 +790,76 @@ mod tests {
 
     #[test]
     fn test_is_retryable() {
-        assert!(ExecutionError::RateLimited {
-            code: BinanceErrorCode::TooManyOrders,
-            message: "test".into(),
-            retry_after_secs: 5,
-        }.is_retryable());
+        assert!(
+            ExecutionError::RateLimited {
+                code: BinanceErrorCode::TooManyOrders,
+                message: "test".into(),
+                retry_after_secs: 5,
+            }
+            .is_retryable()
+        );
 
-        assert!(ExecutionError::NetworkError {
-            message: "timeout".into(),
-            retry_count: 0,
-        }.is_retryable());
+        assert!(
+            ExecutionError::NetworkError {
+                message: "timeout".into(),
+                retry_count: 0,
+            }
+            .is_retryable()
+        );
 
         assert!(!ExecutionError::KillSwitched.is_retryable());
-        assert!(!ExecutionError::InsufficientMargin {
-            required: Decimal::ONE,
-            available: Decimal::ZERO,
-        }.is_retryable());
+        assert!(
+            !ExecutionError::InsufficientMargin {
+                required: Decimal::ONE,
+                available: Decimal::ZERO,
+            }
+            .is_retryable()
+        );
     }
 
     #[test]
     fn test_should_abort() {
         assert!(ExecutionError::KillSwitched.should_abort());
-        assert!(ExecutionError::InsufficientMargin {
-            required: Decimal::from(1000),
-            available: Decimal::from(100),
-        }.should_abort());
-        assert!(ExecutionError::RiskCheckFailed {
-            reason: "daily loss limit".into(),
-        }.should_abort());
+        assert!(
+            ExecutionError::InsufficientMargin {
+                required: Decimal::from(1000),
+                available: Decimal::from(100),
+            }
+            .should_abort()
+        );
+        assert!(
+            ExecutionError::RiskCheckFailed {
+                reason: "daily loss limit".into(),
+            }
+            .should_abort()
+        );
 
-        assert!(!ExecutionError::NetworkError {
-            message: "timeout".into(),
-            retry_count: 0,
-        }.should_abort());
+        assert!(
+            !ExecutionError::NetworkError {
+                message: "timeout".into(),
+                retry_count: 0,
+            }
+            .should_abort()
+        );
     }
 
     #[test]
     fn test_should_skip() {
-        assert!(ExecutionError::SlippageExceeded {
-            estimated_bps: 10.0,
-            max_bps: 5.0,
-        }.should_skip());
+        assert!(
+            ExecutionError::SlippageExceeded {
+                estimated_bps: 10.0,
+                max_bps: 5.0,
+            }
+            .should_skip()
+        );
 
-        assert!(ExecutionError::Rejected {
-            code: BinanceErrorCode::NewOrderRejected,
-            reason: "bad price".into(),
-        }.should_skip());
+        assert!(
+            ExecutionError::Rejected {
+                code: BinanceErrorCode::NewOrderRejected,
+                reason: "bad price".into(),
+            }
+            .should_skip()
+        );
 
         assert!(!ExecutionError::KillSwitched.should_skip());
     }
@@ -826,7 +911,10 @@ mod tests {
             retry_after_secs: 5,
         };
         let decision = decide(&err, 0, 3);
-        assert!(matches!(decision, ErrorDecision::Retry { delay_ms: 5000, .. }));
+        assert!(matches!(
+            decision,
+            ErrorDecision::Retry { delay_ms: 5000, .. }
+        ));
     }
 
     #[test]

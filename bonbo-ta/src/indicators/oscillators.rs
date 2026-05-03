@@ -233,19 +233,28 @@ pub struct StochasticResult {
 }
 
 /// Stochastic Oscillator (%K, %D).
+///
+/// Uses O(1) ring buffer for high/low tracking instead of Vec::remove(0).
 pub struct Stochastic {
     k_period: usize,
     high_buffer: Vec<f64>,
     low_buffer: Vec<f64>,
+    index: usize,
+    filled: bool,
     d_sma: crate::indicators::moving_averages::Sma,
 }
 
 impl Stochastic {
     pub fn new(k_period: usize, d_period: usize) -> Option<Self> {
+        if k_period == 0 {
+            return None;
+        }
         Some(Self {
             k_period,
-            high_buffer: Vec::with_capacity(k_period),
-            low_buffer: Vec::with_capacity(k_period),
+            high_buffer: vec![0.0; k_period],
+            low_buffer: vec![0.0; k_period],
+            index: 0,
+            filled: false,
             d_sma: crate::indicators::moving_averages::Sma::new(d_period)?,
         })
     }
@@ -259,19 +268,21 @@ impl Stochastic {
 impl Stochastic {
     /// Feed a (high, low, close) tuple.
     pub fn next_hlc(&mut self, high: f64, low: f64, close: f64) -> Option<StochasticResult> {
-        self.high_buffer.push(high);
-        self.low_buffer.push(low);
+        self.high_buffer[self.index] = high;
+        self.low_buffer[self.index] = low;
+        self.index = (self.index + 1) % self.k_period;
 
-        if self.high_buffer.len() < self.k_period {
+        if !self.filled && self.index == 0 {
+            self.filled = true;
+        }
+
+        if !self.filled {
             return None;
         }
 
-        // Keep only last k_period values
-        if self.high_buffer.len() > self.k_period {
-            self.high_buffer.remove(0);
-            self.low_buffer.remove(0);
-        }
-
+        // O(n) scan over ring buffer — n = k_period (typically 14), so this is negligible.
+        // A full O(1) rolling min/max requires a deque which adds complexity for little gain
+        // at k_period ≤ 50.
         let highest = self
             .high_buffer
             .iter()
@@ -307,9 +318,14 @@ impl Stochastic {
 // ─── CCI (Commodity Channel Index) ───────────────────────────────
 
 /// CCI indicator.
+///
+/// Uses O(1) ring buffer instead of Vec::remove(0).
 pub struct Cci {
     period: usize,
     tp_buffer: Vec<f64>,
+    index: usize,
+    filled: bool,
+    sum: f64,
 }
 
 impl Cci {
@@ -319,7 +335,10 @@ impl Cci {
         }
         Some(Self {
             period,
-            tp_buffer: Vec::with_capacity(period),
+            tp_buffer: vec![0.0; period],
+            index: 0,
+            filled: false,
+            sum: 0.0,
         })
     }
 }
@@ -327,17 +346,21 @@ impl Cci {
 impl Cci {
     /// Feed typical price = (H + L + C) / 3.
     pub fn next_tp(&mut self, typical_price: f64) -> Option<f64> {
-        self.tp_buffer.push(typical_price);
+        // Ring buffer update: O(1)
+        let old = self.tp_buffer[self.index];
+        self.tp_buffer[self.index] = typical_price;
+        self.sum = self.sum - old + typical_price;
+        self.index = (self.index + 1) % self.period;
 
-        if self.tp_buffer.len() > self.period {
-            self.tp_buffer.remove(0);
+        if !self.filled && self.index == 0 {
+            self.filled = true;
         }
 
-        if self.tp_buffer.len() < self.period {
+        if !self.filled {
             return None;
         }
 
-        let mean: f64 = self.tp_buffer.iter().sum::<f64>() / self.period as f64;
+        let mean: f64 = self.sum / self.period as f64;
         let mean_dev: f64 =
             self.tp_buffer.iter().map(|x| (x - mean).abs()).sum::<f64>() / self.period as f64;
 

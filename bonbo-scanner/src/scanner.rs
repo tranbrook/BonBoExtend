@@ -104,6 +104,66 @@ impl MarketScanner {
     pub fn config(&self) -> &ScanConfig {
         &self.config
     }
+
+    /// Merge symbols from 3 tiers, deduplicate, and return unique list.
+    ///
+    /// Research source: trading-process-improvement.md — Enhancement #4.
+    ///
+    /// # Tiers
+    /// 1. Top Volume: top N symbols by 24h volume (passed in)
+    /// 2. Watchlist: user-configured symbols (from ScanConfig)
+    /// 3. Hot Movers: symbols with |24h change| > threshold and volume > min
+    ///
+    /// # Arguments
+    /// * `top_volume_symbols` — Top N symbols by 24h volume (from exchange API)
+    /// * `hot_movers` — Hot movers detected from 24h change data
+    pub fn merge_tiers(
+        &self,
+        top_volume_symbols: &[String],
+        hot_movers: &[crate::models::HotMover],
+        dynamic_config: &crate::models::DynamicScanConfig,
+    ) -> Vec<(String, crate::models::ScanTier)> {
+        let mut seen = std::collections::HashSet::new();
+        let mut result = Vec::new();
+
+        // Tier 1: Top volume
+        for symbol in top_volume_symbols
+            .iter()
+            .take(dynamic_config.top_volume_count)
+        {
+            if seen.insert(symbol.clone()) {
+                result.push((symbol.clone(), crate::models::ScanTier::TopVolume));
+            }
+        }
+
+        // Tier 2: Watchlist
+        for symbol in &self.config.symbols {
+            if seen.insert(symbol.clone()) {
+                result.push((symbol.clone(), crate::models::ScanTier::Watchlist));
+            }
+        }
+
+        // Tier 3: Hot movers
+        let mut hot_sorted: Vec<_> = hot_movers
+            .iter()
+            .filter(|m| m.volume_24h >= dynamic_config.min_volume_usd)
+            .filter(|m| m.change_24h_pct.abs() >= dynamic_config.hot_mover_min_change_pct)
+            .collect();
+        hot_sorted.sort_by(|a, b| {
+            b.change_24h_pct
+                .abs()
+                .partial_cmp(&a.change_24h_pct.abs())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        for mover in hot_sorted.iter().take(dynamic_config.max_hot_movers) {
+            if seen.insert(mover.symbol.clone()) {
+                result.push((mover.symbol.clone(), crate::models::ScanTier::HotMovers));
+            }
+        }
+
+        result
+    }
 }
 
 #[cfg(test)]
@@ -148,5 +208,93 @@ mod tests {
         assert_eq!(report.top_picks.len(), 3); // less than max_results
         assert_eq!(report.top_picks[0].symbol, "BTCUSDT"); // highest score first
         assert_eq!(report.alerts.len(), 2); // BTC + ETH above min_score
+    }
+
+    #[test]
+    fn test_merge_tiers_basic() {
+        let scanner = MarketScanner::new(ScanConfig::default());
+        let dynamic_config = crate::models::DynamicScanConfig::default();
+
+        let top_volume = vec![
+            "BTCUSDT".to_string(),
+            "ETHUSDT".to_string(),
+            "SOLUSDT".to_string(),
+        ];
+        let hot_movers = vec![
+            crate::models::HotMover {
+                symbol: "PEPEUSDT".to_string(),
+                price: 0.01,
+                change_24h_pct: 15.0,
+                volume_24h: 5_000_000.0,
+                tier: crate::models::ScanTier::HotMovers,
+            },
+            crate::models::HotMover {
+                symbol: "XRPUSDT".to_string(),
+                price: 0.5,
+                change_24h_pct: -8.0,
+                volume_24h: 10_000_000.0,
+                tier: crate::models::ScanTier::HotMovers,
+            },
+        ];
+
+        let merged = scanner.merge_tiers(&top_volume, &hot_movers, &dynamic_config);
+
+        // Should include top volume + watchlist (20 default) + hot movers
+        assert!(merged.len() >= 5);
+        // BTC should be TopVolume tier
+        assert!(
+            merged
+                .iter()
+                .any(|(s, t)| s == "BTCUSDT" && *t == crate::models::ScanTier::TopVolume)
+        );
+        // PEPE should be HotMovers tier
+        assert!(
+            merged
+                .iter()
+                .any(|(s, t)| s == "PEPEUSDT" && *t == crate::models::ScanTier::HotMovers)
+        );
+        // No duplicates
+        let symbols: Vec<&str> = merged.iter().map(|(s, _)| s.as_str()).collect();
+        let unique: std::collections::HashSet<&str> = symbols.iter().copied().collect();
+        assert_eq!(symbols.len(), unique.len());
+    }
+
+    #[test]
+    fn test_merge_tiers_no_hot_movers() {
+        let scanner = MarketScanner::new(ScanConfig::default());
+        let dynamic_config = crate::models::DynamicScanConfig::default();
+
+        // Hot movers below threshold
+        let hot_movers = vec![crate::models::HotMover {
+            symbol: "LOWVOL".to_string(),
+            price: 1.0,
+            change_24h_pct: 2.0,   // below 5% threshold
+            volume_24h: 100_000.0, // below min volume
+            tier: crate::models::ScanTier::HotMovers,
+        }];
+
+        let merged = scanner.merge_tiers(&[], &hot_movers, &dynamic_config);
+        // Only watchlist symbols (no top volume, no qualifying hot movers)
+        assert!(
+            merged
+                .iter()
+                .all(|(_, t)| *t == crate::models::ScanTier::Watchlist)
+        );
+    }
+
+    #[test]
+    fn test_merge_tiers_deduplication() {
+        let mut config = ScanConfig::default();
+        config.symbols = vec!["BTCUSDT".to_string(), "ETHUSDT".to_string()];
+        let scanner = MarketScanner::new(config);
+        let dynamic_config = crate::models::DynamicScanConfig::default();
+
+        // BTC appears in both top volume and watchlist
+        let top_volume = vec!["BTCUSDT".to_string()];
+        let hot_movers = vec![];
+
+        let merged = scanner.merge_tiers(&top_volume, &hot_movers, &dynamic_config);
+        let btc_count = merged.iter().filter(|(s, _)| s == "BTCUSDT").count();
+        assert_eq!(btc_count, 1, "BTC should appear only once (dedup)");
     }
 }

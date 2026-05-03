@@ -24,11 +24,13 @@ pub mod error;
 pub mod indicators;
 pub mod models;
 
+pub use batch::{LaguerreDivergenceSignal, interpret_laguerre_divergence, latest_laguerre_signal};
 pub use error::TaError;
 pub use indicators::{
-    Adx, Alma, Atr, BollingerBands, BollingerBandsResult, Cci, Cmo, Ema, HurstExponent,
-    LaguerreRsi, Macd, MacdResult, MarketCharacter, Obv, RoofingFilter, Rsi, Sma, Stochastic,
-    StochasticResult, SuperSmoother, VolumeBucket, VolumeProfile, Vwap, compute_volume_profile,
+    Adx, Alma, Atr, BollingerBands, BollingerBandsResult, Cci, Cmo, Ema, HurstDfa, HurstExponent,
+    HybridHurstResult, LaguerreRsi, Macd, MacdResult, MarketCharacter, Obv, RoofingFilter, Rsi,
+    Sma, Stochastic, StochasticResult, SuperSmoother, VolumeBucket, VolumeProfile, Vwap,
+    compute_volume_profile,
 };
 pub use models::{MarketRegime, OhlcvCandle, Signal, SignalType, TimeFrame};
 

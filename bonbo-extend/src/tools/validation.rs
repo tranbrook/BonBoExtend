@@ -1,7 +1,7 @@
 //! Validation MCP Tools.
 
-use crate::plugin::{ParameterSchema, PluginContext, PluginMetadata, ToolPlugin, ToolSchema};
 use async_trait::async_trait;
+use bonbo_extend_core::{ParameterSchema, PluginContext, PluginMetadata, ToolPlugin, ToolSchema};
 use serde_json::Value;
 
 use bonbo_validation::cpcv::CpcvValidator;

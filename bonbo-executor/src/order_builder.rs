@@ -11,15 +11,23 @@ pub struct OrderBuilder;
 
 impl OrderBuilder {
     /// Build a LONG entry order (LIMIT BUY).
-    pub fn long_entry(symbol: &str, quantity: Decimal, price: Decimal, client_id: &str) -> NewOrderRequest {
-        NewOrderRequest::limit(symbol, Side::Buy, quantity, price)
-            .with_client_order_id(client_id)
+    pub fn long_entry(
+        symbol: &str,
+        quantity: Decimal,
+        price: Decimal,
+        client_id: &str,
+    ) -> NewOrderRequest {
+        NewOrderRequest::limit(symbol, Side::Buy, quantity, price).with_client_order_id(client_id)
     }
 
     /// Build a SHORT entry order (LIMIT SELL).
-    pub fn short_entry(symbol: &str, quantity: Decimal, price: Decimal, client_id: &str) -> NewOrderRequest {
-        NewOrderRequest::limit(symbol, Side::Sell, quantity, price)
-            .with_client_order_id(client_id)
+    pub fn short_entry(
+        symbol: &str,
+        quantity: Decimal,
+        price: Decimal,
+        client_id: &str,
+    ) -> NewOrderRequest {
+        NewOrderRequest::limit(symbol, Side::Sell, quantity, price).with_client_order_id(client_id)
     }
 
     /// Build a stop-loss order for a LONG position.
@@ -41,13 +49,22 @@ impl OrderBuilder {
     }
 
     /// Build a take-profit order for a SHORT position.
-    pub fn short_take_profit(symbol: &str, stop_price: Decimal, client_id: &str) -> NewOrderRequest {
+    pub fn short_take_profit(
+        symbol: &str,
+        stop_price: Decimal,
+        client_id: &str,
+    ) -> NewOrderRequest {
         NewOrderRequest::take_profit_market(symbol, Side::Buy, stop_price, true)
             .with_client_order_id(client_id)
     }
 
     /// Build a partial close order (TP1/TP2).
-    pub fn partial_close_long(symbol: &str, quantity: Decimal, stop_price: Decimal, client_id: &str) -> NewOrderRequest {
+    pub fn partial_close_long(
+        symbol: &str,
+        quantity: Decimal,
+        stop_price: Decimal,
+        client_id: &str,
+    ) -> NewOrderRequest {
         NewOrderRequest::take_profit_market(symbol, Side::Sell, stop_price, false)
             .with_quantity(quantity)
             .with_reduce_only()
@@ -55,7 +72,12 @@ impl OrderBuilder {
     }
 
     /// Build a trailing stop order.
-    pub fn trailing_stop(symbol: &str, side: Side, callback_rate: Decimal, client_id: &str) -> NewOrderRequest {
+    pub fn trailing_stop(
+        symbol: &str,
+        side: Side,
+        callback_rate: Decimal,
+        client_id: &str,
+    ) -> NewOrderRequest {
         NewOrderRequest {
             symbol: symbol.to_string(),
             side,
@@ -75,6 +97,11 @@ impl OrderBuilder {
 
     /// Generate a unique client order ID.
     pub fn generate_client_id(prefix: &str, symbol: &str) -> String {
-        format!("{}_{}_{}", prefix, symbol.to_lowercase(), uuid::Uuid::new_v4().as_simple())
+        format!(
+            "{}_{}_{}",
+            prefix,
+            symbol.to_lowercase(),
+            uuid::Uuid::new_v4().as_simple()
+        )
     }
 }

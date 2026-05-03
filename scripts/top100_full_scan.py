@@ -125,16 +125,60 @@ LINE = "─" * 120
 class MCPClient:
     """Thread-safe MCP stdio client."""
 
-    def __init__(self, bin_path):
+    def __init__(self, bin_path, market_type="futures"):
         self.bin_path = bin_path
+        self.market_type = market_type
         self._lock = threading.Lock()
         self._seq = 0
 
-    def call(self, tool, args=None, timeout=45):
+    def call(self, tool, args=None, timeout=45, max_retries=3):
+        """Call an MCP tool with retry logic and proper error handling.
+        
+        Args:
+            tool: MCP tool name
+            args: Tool arguments dict
+            timeout: Per-attempt timeout in seconds
+            max_retries: Max retry attempts on transient errors
+            
+        Returns:
+            Tool result text, or empty string after all retries exhausted.
+        """
+        if args is None:
+            args = {}
+            
+        for attempt in range(max_retries):
+            try:
+                result = self._call_once(tool, args, timeout)
+                if result:
+                    return result
+                # Empty result might mean MCP server had a transient issue
+                if attempt < max_retries - 1:
+                    time.sleep(0.5 * (attempt + 1))  # linear backoff
+                    continue
+            except subprocess.TimeoutExpired:
+                print(f"  ⚠️ MCP timeout on {tool} (attempt {attempt+1}/{max_retries})", file=sys.stderr)
+                if attempt < max_retries - 1:
+                    time.sleep(1.0 * (attempt + 1))
+                    continue
+            except FileNotFoundError:
+                print(f"  ❌ MCP binary not found: {self.bin_path}", file=sys.stderr)
+                return ""
+            except Exception as e:
+                err_msg = str(e)
+                # Non-retriable errors
+                if "not found" in err_msg.lower() or "permission" in err_msg.lower():
+                    print(f"  ❌ MCP error (non-retriable): {err_msg}", file=sys.stderr)
+                    return ""
+                print(f"  ⚠️ MCP error on {tool}: {err_msg} (attempt {attempt+1}/{max_retries})", file=sys.stderr)
+                if attempt < max_retries - 1:
+                    time.sleep(0.5 * (attempt + 1))
+                    continue
+        return ""
+
+    def _call_once(self, tool, args, timeout):
+        """Single MCP call attempt."""
         with self._lock:
             self._seq += 1
-            if args is None:
-                args = {}
             init_req = json.dumps({
                 "jsonrpc": "2.0", "method": "initialize",
                 "params": {
@@ -149,24 +193,28 @@ class MCPClient:
                 "id": str(self._seq),
             })
             stdin_data = init_req + "\n" + call_req + "\n"
-            try:
-                p = subprocess.run(
-                    [self.bin_path], input=stdin_data,
-                    capture_output=True, text=True, timeout=timeout,
-                )
-                for line in p.stdout.strip().split("\n"):
-                    try:
-                        r = json.loads(line)
-                        if "result" in r and "content" in r["result"]:
-                            for c in r["result"]["content"]:
-                                if c.get("type") == "text":
-                                    return c["text"]
-                    except json.JSONDecodeError:
-                        continue
-            except subprocess.TimeoutExpired:
-                pass
-            except Exception:
-                pass
+            # Pass BINANCE_MARKET_TYPE env to subprocess
+            env = os.environ.copy()
+            env["BINANCE_MARKET_TYPE"] = self.market_type
+            p = subprocess.run(
+                [self.bin_path], input=stdin_data,
+                capture_output=True, text=True, timeout=timeout,
+                env=env,
+            )
+            for line in p.stdout.strip().split("\n"):
+                try:
+                    r = json.loads(line)
+                    if "result" in r and "content" in r["result"]:
+                        for c in r["result"]["content"]:
+                            if c.get("type") == "text":
+                                return c["text"]
+                except json.JSONDecodeError:
+                    continue
+            # Check for MCP-level errors
+            if p.returncode != 0 and p.stderr:
+                stderr_first_line = p.stderr.strip().split("\n")[0] if p.stderr else ""
+                if stderr_first_line:
+                    raise RuntimeError(f"MCP server error: {stderr_first_line}")
             return ""
 
 
@@ -174,9 +222,13 @@ class MCPClient:
 _client_pool = queue.Queue()
 
 
-def init_pool(workers=NUM_WORKERS):
+MARKET_TYPE = "futures"  # "spot" or "futures"
+
+
+def init_pool(workers=NUM_WORKERS, market_type=None):
+    mt = market_type or MARKET_TYPE
     for _ in range(workers):
-        _client_pool.put(MCPClient(MCP_BIN))
+        _client_pool.put(MCPClient(MCP_BIN, market_type=mt))
 
 
 def get_cli():
@@ -281,6 +333,76 @@ def p_ss(t):
     return m.group(0).strip() if m else ""
 
 
+def p_atr_stops(t):
+    """Parse ATR-based stop-loss levels from analyze_indicators output.
+    Returns dict: {long_sl, long_tp, short_sl, short_tp, atr_value, multiplier}
+    """
+    result = {"long_sl": 0, "long_tp": 0, "short_sl": 0, "short_tp": 0, "atr": 0, "mult": 2.0}
+    # Parse ATR value
+    m = re.search(r"ATR\(14\)=([0-9.]+)", t)
+    if m:
+        result["atr"] = float(m.group(1))
+    # Parse multiplier
+    m = re.search(r"(\d+\.\d+)×ATR", t)
+    if m:
+        result["mult"] = float(m.group(1))
+    # Parse LONG SL/TP — format: "LONG  → SL: $73057.21 (-5.9%) | TP: $82241.69"
+    m = re.search(r"LONG\s+→\s+SL:\s*\$([0-9,.]+)\s*\([^)]*\)\s*\|\s*TP:\s*\$([0-9,.]+)", t)
+    if m:
+        result["long_sl"] = float(m.group(1).replace(",", ""))
+        result["long_tp"] = float(m.group(2).replace(",", ""))
+    # Parse SHORT SL/TP — format: "SHORT → SL: $82241.69 (+5.9%)"
+    m = re.search(r"SHORT\s+→\s+SL:\s*\$([0-9,.]+)\s*\([^)]*\)\s*\|\s*TP:\s*\$([0-9,.]+)", t)
+    if m:
+        result["short_sl"] = float(m.group(1).replace(",", ""))
+        result["short_tp"] = float(m.group(2).replace(",", ""))
+    return result
+
+
+def p_hurst_divergence(t):
+    """Parse Hurst divergence (short vs long) from analyze_indicators.
+    Returns dict: {short, long, delta, direction} or None.
+    """
+    m = re.search(r"Hurst Divergence.*?short=([0-9.]+)\s+vs\s+long=([0-9.]+)\s+\(Δ=([0-9.]+)\)\s+→\s+regime transition likely \((\w[\w\s]+)\)", t)
+    if m:
+        return {
+            "short": float(m.group(1)),
+            "long": float(m.group(2)),
+            "delta": float(m.group(3)),
+            "direction": m.group(4).strip(),
+        }
+    # Also check for aligned case
+    m2 = re.search(r"Hurst\(50\).*?:\s*([0-9.]+)\s*—\s*aligned", t)
+    if m2:
+        h_long = p_hurst(t)
+        return {
+            "short": float(m2.group(1)),
+            "long": h_long,
+            "delta": abs(h_long - float(m2.group(1))),
+            "direction": "aligned",
+        }
+    return None
+
+
+def p_gamma_used(t):
+    """Parse LaguerreRSI gamma values used."""
+    gammas = re.findall(r"LaguerreRSI\(γ=([0-9.]+)\)", t)
+    return [float(g) for g in gammas] if gammas else [0.8]
+
+
+def p_lag_delta(t):
+    """Parse LaguerreRSI divergence between fast and slow."""
+    m = re.search(r"fast=([0-9.]+),\s*slow=([0-9.]+)\s*(confirm|diverge)", t)
+    if m:
+        return {
+            "fast": float(m.group(1)),
+            "slow": float(m.group(2)),
+            "status": m.group(3),
+            "delta": abs(float(m.group(1)) - float(m.group(2))),
+        }
+    return None
+
+
 def parse_backtest(text):
     """Parse backtest report text → dict of metrics."""
     if not text or ("Error" in text and "Return" not in text):
@@ -320,7 +442,11 @@ def parse_backtest(text):
 # ════════════════════════════════════════════════════════════════════
 
 def score_timeframe(ind_text, sig_text, reg_text, sr_text=""):
-    """Score a single timeframe: returns (score 0-100, details dict)."""
+    """Score a single timeframe: returns (score 0-100, details dict).
+    Uses improvements from trading-process-improvement.md:
+      #6: ATR regime-based stops (wider SL for trending, tighter for MR)
+      #7: Hurst divergence (short vs long Hurst → regime transition detection)
+    """
     price = p_price(ind_text)
     hurst = p_hurst(ind_text) or p_hurst(reg_text)
     lag = p_lag(ind_text)
@@ -333,10 +459,21 @@ def score_timeframe(ind_text, sig_text, reg_text, sr_text=""):
     regime = p_regime(reg_text)
     srlvls = p_sr(sr_text)
 
+    # ── Improvement #6: Parse ATR regime-based stops ──
+    atr_stops = p_atr_stops(ind_text)
+    # ── Improvement #7: Parse Hurst divergence ──
+    hurst_div = p_hurst_divergence(ind_text)
+    # ── Improvement #5: Parse LaguerreRSI delta (fast vs slow confirmation) ──
+    lag_delta = p_lag_delta(ind_text)
+
     details = {
         "price": price, "hurst": hurst, "regime": regime["regime"],
         "lag": lag, "cmo": cmo, "rsi": rsi, "bb": bb,
         "alma": alma, "ss": ss, "signals": signals, "sr": srlvls,
+        # New fields from improvements
+        "atr_stops": atr_stops,
+        "hurst_divergence": hurst_div,
+        "lag_delta": lag_delta,
     }
 
     total, weight = 0.0, 0.0
@@ -409,6 +546,38 @@ def score_timeframe(ind_text, sig_text, reg_text, sr_text=""):
         trend_score = 6.0
     total += trend_score
     weight += 20
+
+    # ── Improvement #7: Hurst Divergence Bonus (0-10) ──
+    # Short-term Hurst diverging from long-term signals regime transition
+    if hurst_div:
+        delta = hurst_div.get("delta", 0)
+        direction = hurst_div.get("direction", "")
+        if direction == "aligned":
+            # Both agree → higher confidence
+            hdiv_score = 10.0
+        elif delta > 0.1:
+            # Significant divergence → regime transition likely → bonus
+            hdiv_score = 7.0
+        elif delta > 0.05:
+            hdiv_score = 4.0
+        else:
+            hdiv_score = 2.0
+    else:
+        hdiv_score = 5.0  # neutral if not available
+    total += hdiv_score
+    weight += 10
+
+    # ── Improvement #5: LaguerreRSI Delta Bonus (0-5) ──
+    # Fast and slow LaguerreRSI confirming → stronger signal
+    if lag_delta:
+        if lag_delta["status"] == "confirm":
+            lag_delta_score = 5.0
+        else:
+            lag_delta_score = 1.0  # diverging = uncertain
+    else:
+        lag_delta_score = 2.5
+    total += lag_delta_score
+    weight += 5
 
     final = min((total / weight * 100) if weight > 0 else 0, 100.0)
     return final, details
@@ -868,20 +1037,44 @@ def display_top10_detail(deep, bt_data=None, best_per_coin=None):
             )
 
         print(f"    │")
+        # ── Improvement #6: Use ATR regime-based SL/TP instead of fixed % ──
+        # Get best ATR stops from 1D timeframe (most reliable)
+        atr = None
+        for tf_key in ("1d", "4h", "1h"):
+            if tf_key in td and td[tf_key][1].get("atr_stops", {}).get("atr", 0) > 0:
+                atr = td[tf_key][1]["atr_stops"]
+                break
+
         if "BUY" in conf:
             print(f"    ├── {BGR('💡 LONG ↑')}")
             if price > 0:
-                sl = price * 0.97
-                tp1 = price * 1.03
-                tp2 = price * 1.06
+                if atr and atr.get("long_sl", 0) > 0:
+                    # Use ATR-based stops from tool output
+                    sl = atr["long_sl"]
+                    tp1 = atr["long_tp"]
+                    tp2 = price + (price - sl) * 3  # 3:1 R:R
+                else:
+                    # Fallback: 2% ATR-equivalent
+                    sl = price * 0.97
+                    tp1 = price * 1.03
+                    tp2 = price * 1.06
                 print(f"    │   Entry:${price:,.4f} SL:${sl:,.4f} TP1:${tp1:,.4f} TP2:${tp2:,.4f}")
+                if atr and atr.get("atr", 0) > 0:
+                    print(f"    │   (ATR={atr['atr']:.2f}, {atr['mult']}x multiplier)")
         elif "SELL" in conf:
             print(f"    ├── {BRD('💡 SHORT ↓')}")
             if price > 0:
-                sl = price * 1.03
-                tp1 = price * 0.97
-                tp2 = price * 0.94
+                if atr and atr.get("short_sl", 0) > 0:
+                    sl = atr["short_sl"]
+                    tp1 = atr["short_tp"]
+                    tp2 = price - (sl - price) * 3  # 3:1 R:R
+                else:
+                    sl = price * 1.03
+                    tp1 = price * 0.97
+                    tp2 = price * 0.94
                 print(f"    │   Entry:${price:,.4f} SL:${sl:,.4f} TP1:${tp1:,.4f} TP2:${tp2:,.4f}")
+                if atr and atr.get("atr", 0) > 0:
+                    print(f"    │   (ATR={atr['atr']:.2f}, {atr['mult']}x multiplier)")
         else:
             print(f"    ├── {YL('💡 WAIT — Không có tín hiệu rõ ràng')}")
         print(f"    └{'─'*116}┘")
@@ -1235,6 +1428,18 @@ def save_results(deep, all_trades, best_per_coin, best_per_strategy, sentiment_t
     with open(rpt_path, "w") as f:
         json.dump(output, f, indent=2, ensure_ascii=False)
 
+    # ── Improvement #8: Kelly Criterion position sizing ──
+    output["position_sizing"] = compute_kelly_sizing(all_trades, equity=10000)
+
+    # ── Improvement #9: Portfolio correlation analysis ──
+    # For top 5 coins, compute pairwise hurst/regime correlation
+    # deep is list of (symbol, data_dict) tuples
+    top5_dicts = [d for (_, d) in deep[:5]]
+    output["portfolio_analysis"] = compute_portfolio_analysis(top5_dicts)
+
+    with open(rpt_path, "w") as f:
+        json.dump(output, f, indent=2, ensure_ascii=False)
+
     return rpt_path
 
 
@@ -1272,6 +1477,74 @@ def fetch_top_coins(limit=100):
 # MAIN
 # ════════════════════════════════════════════════════════════════════
 
+def compute_kelly_sizing(trades, equity=10000):
+    """Improvement #8: Kelly Criterion position sizing for best trades.
+    For each trade, compute optimal position size based on win rate and payoff ratio.
+    Kelly fraction: f* = (p*b - q) / b where p=win_rate, q=1-p, b=avg_win/avg_loss
+    """
+    sizing = []
+    for t in trades[:10]:
+        wr = t.get("wr", 50) / 100.0
+        avg_ret = t.get("ret", 0) / 100.0
+        mdd = max(t.get("mdd", 10) / 100.0, 0.01)
+        # Kelly fraction (half-Kelly for safety)
+        if wr > 0 and mdd > 0:
+            payoff = abs(avg_ret) / mdd if mdd > 0 else 1
+            kelly = (wr * payoff - (1 - wr)) / payoff if payoff > 0 else 0
+            half_kelly = max(kelly * 0.5, 0)  # Half-Kelly for safety
+            position_usd = equity * min(half_kelly, 0.05)  # Cap at 5% of equity
+        else:
+            position_usd = equity * 0.01  # 1% default
+
+        sizing.append({
+            "symbol": t["symbol"],
+            "strategy": t["strategy"],
+            "interval": t["interval"],
+            "win_rate": f"{wr*100:.0f}%",
+            "half_kelly_pct": f"{half_kelly*100:.2f}%" if wr > 0 else "0.50%",
+            "position_usd": round(position_usd, 2),
+            "max_risk_usd": round(equity * 0.01, 2),  # Never risk > 1% per trade
+        })
+    return sizing
+
+
+def compute_portfolio_analysis(top_results):
+    """Improvement #9: Portfolio-level analysis.
+    Check regime diversity and hurst correlation to avoid concentration.
+    """
+    if not top_results:
+        return {}
+
+    regimes = [r.get("regime_summary", {}).get("regime", "?") for r in top_results if "regime_summary" in r]
+    hursts = []
+    for r in top_results:
+        h = r.get("tf_hurst", {})
+        h_avg = sum(v for v in h.values() if isinstance(v, (int, float))) / max(len(h), 1)
+        hursts.append(h_avg)
+
+    # Regime diversity score (higher = more diverse = better)
+    regime_counts = {}
+    for rg in regimes:
+        regime_counts[rg] = regime_counts.get(rg, 0) + 1
+    total = len(regimes) or 1
+    diversity = 1.0 - max(regime_counts.values()) / total if regime_counts else 0
+
+    # Hurst correlation warning
+    hurst_aligned = all(h > 0.55 for h in hursts) if hursts else False
+
+    return {
+        "regime_distribution": regime_counts,
+        "regime_diversity_score": round(diversity, 2),
+        "avg_hurst": round(sum(hursts) / len(hursts), 3) if hursts else 0,
+        "all_trending": hurst_aligned,
+        "warning": "All coins in same regime → portfolio concentration risk" if diversity < 0.3 else "Good regime diversity",
+        "recommendation": (
+            "Diversify across different regimes" if diversity < 0.3
+            else "Regime spread looks healthy"
+        ),
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description="BonBo Top 100 Full Scan + Backtest")
     parser.add_argument("--quick", action="store_true", help="Quick mode: 20 coins, skip some strategies")
@@ -1281,6 +1554,8 @@ def main():
     parser.add_argument("--no-backtest", action="store_true", help="Skip Phase 3 backtest")
     parser.add_argument("--coins", nargs="+", help="Specific coins to analyze")
     parser.add_argument("--workers", type=int, default=NUM_WORKERS, help="Parallel workers")
+    parser.add_argument("--market", choices=["spot", "futures"], default="futures",
+                        help="Binance market type: spot or futures (default: futures)")
     args = parser.parse_args()
 
     # Quick mode overrides
@@ -1297,14 +1572,17 @@ def main():
     print(
         f"  📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | "
         f"Workers: {num_workers} | "
+        f"Market: {args.market.upper()} | "
         f"Coins: {args.top_n} → Deep: {args.deep_n} → Backtest: {args.bt_n}"
     )
     print(BOLD(SEP))
     print()
 
     # Init MCP pool
-    print(f"  {CY('⚙️')} Initializing MCP client pool ({num_workers} workers)...")
-    init_pool(num_workers)
+    global MARKET_TYPE
+    MARKET_TYPE = args.market
+    print(f"  {CY('⚙️')} Initializing MCP client pool ({num_workers} workers, market={args.market})...")
+    init_pool(num_workers, market_type=args.market)
 
     # ── Sentiment ──
     print(f"  {CY('📊')} Fetching market sentiment...")

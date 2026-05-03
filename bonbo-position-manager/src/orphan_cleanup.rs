@@ -5,8 +5,8 @@
 //! - Standard orders (`/fapi/v1/order`)
 //! - Algo conditional orders (`/fapi/v1/algoOrder`)
 
-use bonbo_binance_futures::rest::FuturesRestClient;
 use crate::tracker::PositionTracker;
+use bonbo_binance_futures::rest::FuturesRestClient;
 
 /// Orphan order cleaner.
 pub struct OrphanCleaner;
@@ -28,21 +28,31 @@ impl OrphanCleaner {
         if let Some(pos) = &position {
             for order_id in pos.all_order_ids() {
                 match bonbo_binance_futures::rest::OrdersClient::cancel_order(
-                    rest_client, symbol, order_id,
-                ).await {
+                    rest_client,
+                    symbol,
+                    order_id,
+                )
+                .await
+                {
                     Ok(_) => tracing::info!("Cancelled standard order {} for {}", order_id, symbol),
-                    Err(e) => tracing::debug!("Standard order {} not found (expected): {}", order_id, e),
+                    Err(e) => {
+                        tracing::debug!("Standard order {} not found (expected): {}", order_id, e)
+                    }
                 }
             }
         }
 
         // Step 2: Cancel ALL reduceOnly standard orders as safety net
-        match bonbo_binance_futures::rest::OrdersClient::cancel_sl_tp_orders(
-            rest_client, symbol,
-        ).await {
+        match bonbo_binance_futures::rest::OrdersClient::cancel_sl_tp_orders(rest_client, symbol)
+            .await
+        {
             Ok(cancelled) => {
                 if !cancelled.is_empty() {
-                    tracing::info!("Cancelled {} standard SL/TP orders for {}", cancelled.len(), symbol);
+                    tracing::info!(
+                        "Cancelled {} standard SL/TP orders for {}",
+                        cancelled.len(),
+                        symbol
+                    );
                 }
             }
             Err(e) => {
@@ -55,11 +65,18 @@ impl OrphanCleaner {
             let algo_ids = pos.all_algo_ids();
             if !algo_ids.is_empty() {
                 match bonbo_binance_futures::rest::AlgoOrdersClient::cancel_sl_tp_algo_orders(
-                    rest_client, &algo_ids,
-                ).await {
+                    rest_client,
+                    &algo_ids,
+                )
+                .await
+                {
                     Ok(cancelled) => {
                         if !cancelled.is_empty() {
-                            tracing::info!("Cancelled {} algo SL/TP orders for {}", cancelled.len(), symbol);
+                            tracing::info!(
+                                "Cancelled {} algo SL/TP orders for {}",
+                                cancelled.len(),
+                                symbol
+                            );
                         }
                     }
                     Err(e) => {
@@ -85,7 +102,8 @@ impl OrphanCleaner {
         let mut cleaned = Vec::new();
 
         // Get real positions from Binance
-        let binance_positions = bonbo_binance_futures::rest::AccountClient::get_positions(rest_client).await?;
+        let binance_positions =
+            bonbo_binance_futures::rest::AccountClient::get_positions(rest_client).await?;
 
         for pos in &positions {
             let binance_pos = binance_positions.iter().find(|bp| bp.symbol == pos.symbol);

@@ -205,7 +205,12 @@ impl NewOrderRequest {
     }
 
     /// Create a STOP_MARKET order (stop-loss).
-    pub fn stop_market(symbol: &str, side: Side, stop_price: Decimal, close_position: bool) -> Self {
+    pub fn stop_market(
+        symbol: &str,
+        side: Side,
+        stop_price: Decimal,
+        close_position: bool,
+    ) -> Self {
         Self {
             symbol: symbol.to_string(),
             side,
@@ -224,7 +229,12 @@ impl NewOrderRequest {
     }
 
     /// Create a TAKE_PROFIT_MARKET order.
-    pub fn take_profit_market(symbol: &str, side: Side, stop_price: Decimal, close_position: bool) -> Self {
+    pub fn take_profit_market(
+        symbol: &str,
+        side: Side,
+        stop_price: Decimal,
+        close_position: bool,
+    ) -> Self {
         Self {
             symbol: symbol.to_string(),
             side,

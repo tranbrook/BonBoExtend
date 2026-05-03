@@ -267,6 +267,7 @@ pub struct TwapReport {
 ///
 /// # Returns
 /// `TwapReport` with full execution analytics.
+#[allow(clippy::too_many_arguments)]
 pub async fn execute_twap(
     placer: &dyn OrderPlacer,
     symbol: &str,
@@ -286,17 +287,29 @@ pub async fn execute_twap(
     // ── Phase 1: Arrival price & initial book ─────────────────
     let initial_book = placer.get_orderbook(symbol).await?;
     let arrival_price = initial_book.mid_price().unwrap_or(Decimal::ONE);
-    let start_spread_bps = initial_book.spread_bps().unwrap_or(config.normal_spread_bps);
+    let start_spread_bps = initial_book
+        .spread_bps()
+        .unwrap_or(config.normal_spread_bps);
 
     tracing::info!(
         "📊 TWAP START: {} {:?} {} | slices={} interval={}s | arrival=${} spread={:.1}bps",
-        symbol, side, total_qty, config.slices, config.interval_secs,
-        arrival_price, start_spread_bps
+        symbol,
+        side,
+        total_qty,
+        config.slices,
+        config.interval_secs,
+        arrival_price,
+        start_spread_bps
     );
 
     // Pre-trade risk check
     let pre_check = PreTradeCheck::run(
-        symbol, side, total_qty, arrival_price, risk_state, risk_limits,
+        symbol,
+        side,
+        total_qty,
+        arrival_price,
+        risk_state,
+        risk_limits,
     );
     if !pre_check.allowed {
         anyhow::bail!("Pre-trade check failed: {:?}", pre_check.reason);
@@ -304,8 +317,10 @@ pub async fn execute_twap(
 
     // ── Phase 2: Slice scheduling ─────────────────────────────
     let base_slice_qty = total_qty / Decimal::from(config.slices as i64);
-    let min_slice = total_qty * Decimal::from_f64_retain(config.min_slice_fraction).unwrap_or(Decimal::ZERO);
-    let max_slice = total_qty * Decimal::from_f64_retain(config.max_slice_fraction).unwrap_or(total_qty);
+    let min_slice =
+        total_qty * Decimal::from_f64_retain(config.min_slice_fraction).unwrap_or(Decimal::ZERO);
+    let max_slice =
+        total_qty * Decimal::from_f64_retain(config.max_slice_fraction).unwrap_or(total_qty);
 
     let mut transient = TransientImpactState::new(impact_params.decay_tau_secs);
     let mut fills: Vec<FillResult> = Vec::new();
@@ -334,6 +349,7 @@ pub async fn execute_twap(
 
         // ── Phase 3: Pre-slice checks ─────────────────────────
         let mut retries = 0usize;
+        #[allow(unused_assignments)]
         let mut slice_status = SliceStatus::Scheduled;
         let mut planned_qty = Decimal::ZERO;
 
@@ -383,9 +399,11 @@ pub async fn execute_twap(
                 };
                 tracing::warn!(
                     "⏸ TWAP slice {}: spread {:.1}bps > pause threshold {:.1}bps (retry {}/{})",
-                    i, current_spread_bps,
+                    i,
+                    current_spread_bps,
                     config.normal_spread_bps * config.spread_pause_multiplier,
-                    retries, config.max_retries
+                    retries,
+                    config.max_retries
                 );
                 if retries >= config.max_retries {
                     tracing::error!("🚨 TWAP slice {}: max retries on spread pause", i);
@@ -401,10 +419,7 @@ pub async fn execute_twap(
                 Side::Sell => book.estimate_sell_slippage(base_slice_qty.min(remaining)),
             };
 
-            let estimated_slippage = slippage_est
-                .as_ref()
-                .map(|e| e.slippage_bps)
-                .unwrap_or(0.0);
+            let estimated_slippage = slippage_est.as_ref().map(|e| e.slippage_bps).unwrap_or(0.0);
 
             if estimated_slippage > config.max_slippage_per_slice_bps {
                 retries += 1;
@@ -415,8 +430,11 @@ pub async fn execute_twap(
                 };
                 tracing::warn!(
                     "⏸ TWAP slice {}: slippage est {:.1}bps > max {:.1}bps (retry {}/{})",
-                    i, estimated_slippage, config.max_slippage_per_slice_bps,
-                    retries, config.max_retries
+                    i,
+                    estimated_slippage,
+                    config.max_slippage_per_slice_bps,
+                    retries,
+                    config.max_retries
                 );
                 if retries >= config.max_retries {
                     tracing::error!("🚨 TWAP slice {}: max retries on slippage pause", i);
@@ -440,11 +458,18 @@ pub async fn execute_twap(
 
             // Risk check for this slice
             let slice_check = PreTradeCheck::run(
-                symbol, side, planned_qty, arrival_price, risk_state, risk_limits,
+                symbol,
+                side,
+                planned_qty,
+                arrival_price,
+                risk_state,
+                risk_limits,
             );
             if !slice_check.allowed {
                 slice_status = SliceStatus::Skipped(
-                    slice_check.reason.unwrap_or_else(|| "Risk limit".to_string()),
+                    slice_check
+                        .reason
+                        .unwrap_or_else(|| "Risk limit".to_string()),
                 );
                 tracing::warn!("⏭ TWAP slice {}: risk check failed", i);
                 break 'retry_loop;
@@ -465,7 +490,10 @@ pub async fn execute_twap(
                 commission: Decimal::ZERO,
                 is_maker: false,
                 slippage_bps: 0.0,
-                spread_bps: spread_measurements.last().copied().unwrap_or(config.normal_spread_bps),
+                spread_bps: spread_measurements
+                    .last()
+                    .copied()
+                    .unwrap_or(config.normal_spread_bps),
                 estimated_slippage_bps: 0.0,
                 size_fraction: 0.0,
                 was_resized: false,
@@ -481,7 +509,8 @@ pub async fn execute_twap(
         }
 
         // ── Phase 5: Place order ──────────────────────────────
-        let was_resized = (planned_qty - base_slice_qty).abs() > Decimal::from_str("0.001").unwrap_or(Decimal::ONE);
+        let was_resized = (planned_qty - base_slice_qty).abs()
+            > Decimal::from_str("0.001").unwrap_or(Decimal::ONE);
         if was_resized {
             resized_count += 1;
         }
@@ -489,7 +518,10 @@ pub async fn execute_twap(
         let fill = if config.limit_first {
             let book = placer.get_orderbook(symbol).await?;
             let limit_price = compute_limit_price_for_side(&book, side);
-            match placer.place_limit(symbol, side, planned_qty, limit_price).await {
+            match placer
+                .place_limit(symbol, side, planned_qty, limit_price)
+                .await
+            {
                 Ok(f) => f,
                 Err(e) => {
                     tracing::debug!("TWAP slice {}: limit failed ({}), sweeping market", i, e);
@@ -504,11 +536,15 @@ pub async fn execute_twap(
         // ── Phase 6: Post-slice analytics ─────────────────────
         let now_epoch_ms = start_epoch_ms + start_wall.elapsed().as_millis() as i64;
         let fill_slippage = fill.slippage_bps;
-        let current_spread = spread_measurements.last().copied().unwrap_or(config.normal_spread_bps);
+        let current_spread = spread_measurements
+            .last()
+            .copied()
+            .unwrap_or(config.normal_spread_bps);
 
         // Update transient impact
         let now_secs = now_epoch_ms as f64 / 1000.0;
-        let rate = decimal_to_f64(fill.fill_price * fill.fill_qty) / config.interval_secs.max(1) as f64;
+        let rate =
+            decimal_to_f64(fill.fill_price * fill.fill_qty) / config.interval_secs.max(1) as f64;
         transient.record_trade(now_secs, rate);
         transient.prune(now_secs);
 
@@ -530,7 +566,7 @@ pub async fn execute_twap(
             is_maker: fill.is_maker,
             slippage_bps: fill_slippage,
             spread_bps: current_spread,
-            estimated_slippage_bps: if slice_status == SliceStatus::Executing { 0.0 } else { 0.0 },
+            estimated_slippage_bps: 0.0,
             size_fraction,
             was_resized,
             jitter_secs,
@@ -541,27 +577,33 @@ pub async fn execute_twap(
 
         fills.push(fill);
 
+        let last_rec = slice_records
+            .last()
+            .expect("slice_records must have entry after push");
         tracing::info!(
             "✅ TWAP slice {}/{}: filled {} @ ${} ({:.1}bps slip, {:.1}bps spread, {:.1}% of total)",
-            i + 1, config.slices,
-            slice_records.last().unwrap().filled_qty,
-            slice_records.last().unwrap().fill_price,
-            fill_slippage, current_spread, size_fraction * 100.0
+            i + 1,
+            config.slices,
+            last_rec.filled_qty,
+            last_rec.fill_price,
+            fill_slippage,
+            current_spread,
+            size_fraction * 100.0
         );
     }
 
     // ── Phase 7: Build report ─────────────────────────────────
-    let end_spread_bps = spread_measurements.last().copied().unwrap_or(start_spread_bps);
+    let end_spread_bps = spread_measurements
+        .last()
+        .copied()
+        .unwrap_or(start_spread_bps);
     let avg_spread_bps = if spread_measurements.is_empty() {
         start_spread_bps
     } else {
         spread_measurements.iter().sum::<f64>() / spread_measurements.len() as f64
     };
 
-    let avg_jitter = slice_records
-        .iter()
-        .map(|s| s.jitter_secs)
-        .sum::<f64>()
+    let avg_jitter = slice_records.iter().map(|s| s.jitter_secs).sum::<f64>()
         / slice_records.len().max(1) as f64;
 
     let now_secs = std::time::SystemTime::now()
@@ -571,7 +613,13 @@ pub async fn execute_twap(
     let residual_impact = transient.compute_impact(now_secs, impact_params.eta);
 
     let base_report = ExecutionReport::build(
-        symbol, side, "TWAP", total_qty, arrival_price, fills, start_wall,
+        symbol,
+        side,
+        "TWAP",
+        total_qty,
+        arrival_price,
+        fills,
+        start_wall,
     );
 
     tracing::info!(
@@ -610,6 +658,7 @@ pub async fn execute_twap(
 /// 3. Clamp to [min_slice, max_slice]
 /// 4. If slippage estimate > 50% of max → scale down proportionally
 /// 5. If spread > 1.5× normal → scale down by (normal/current)
+#[allow(clippy::too_many_arguments)]
 fn compute_adaptive_qty(
     base_slice_qty: Decimal,
     remaining: Decimal,
@@ -626,7 +675,7 @@ fn compute_adaptive_qty(
     // Slippage-based scaling: if estimate > 50% of max, scale down
     if max_slippage_bps > 0.0 && estimated_slippage_bps > max_slippage_bps * 0.5 {
         let scale = 1.0 - (estimated_slippage_bps / max_slippage_bps - 0.5);
-        let scale = scale.max(0.3).min(1.0); // never scale below 30%
+        let scale = scale.clamp(0.3, 1.0); // never scale below 30%
         qty = qty * Decimal::from_f64_retain(scale).unwrap_or(qty);
     }
 
@@ -668,7 +717,7 @@ impl SimpleRng {
         }
     }
 
-    pub fn next(&mut self) -> u64 {
+    pub fn next_val(&mut self) -> u64 {
         let mut x = self.state;
         x ^= x << 13;
         x ^= x >> 7;
@@ -687,14 +736,16 @@ impl SimpleRng {
 /// - SELL → post at best ask (join the ask)
 fn compute_limit_price_for_side(book: &OrderBookSnapshot, side: Side) -> Decimal {
     match side {
-        Side::Buy => book.best_bid().unwrap_or_else(|| book.mid_price().unwrap_or(Decimal::ONE)),
-        Side::Sell => book.best_ask().unwrap_or_else(|| book.mid_price().unwrap_or(Decimal::ONE)),
+        Side::Buy => book
+            .best_bid()
+            .unwrap_or_else(|| book.mid_price().unwrap_or(Decimal::ONE)),
+        Side::Sell => book
+            .best_ask()
+            .unwrap_or_else(|| book.mid_price().unwrap_or(Decimal::ONE)),
     }
 }
 
 // ── Helpers ──────────────────────────────────────────────────
-
-
 
 // ═══════════════════════════════════════════════════════════════
 // TESTS
@@ -745,7 +796,10 @@ mod tests {
         let mut rng = SimpleRng::from_seed(42);
         for _ in 0..100 {
             let jitter = compute_jitter(30, 0.2, &mut rng);
-            assert!(jitter >= -6.0 && jitter <= 6.0, "jitter={jitter} outside [-6, 6]");
+            assert!(
+                jitter >= -6.0 && jitter <= 6.0,
+                "jitter={jitter} outside [-6, 6]"
+            );
         }
     }
 
@@ -765,7 +819,7 @@ mod tests {
         let mut rng1 = SimpleRng::from_seed(12345);
         let mut rng2 = SimpleRng::from_seed(12345);
         for _ in 0..10 {
-            assert_eq!(rng1.next(), rng2.next());
+            assert_eq!(rng1.next_val(), rng2.next_val());
         }
     }
 
@@ -773,7 +827,7 @@ mod tests {
     fn test_rng_never_zero() {
         let mut rng = SimpleRng::from_seed(1);
         for _ in 0..100 {
-            assert_ne!(rng.next(), 0);
+            assert_ne!(rng.next_val(), 0);
         }
     }
 
@@ -782,14 +836,14 @@ mod tests {
     #[test]
     fn test_adaptive_qty_normal_conditions() {
         let qty = compute_adaptive_qty(
-            Decimal::from(100),  // base
-            Decimal::from(500),  // remaining
-            Decimal::from(10),   // min
-            Decimal::from(200),  // max
-            1.0,                 // est slippage
-            5.0,                 // max slippage
-            2.0,                 // current spread
-            2.0,                 // normal spread
+            Decimal::from(100), // base
+            Decimal::from(500), // remaining
+            Decimal::from(10),  // min
+            Decimal::from(200), // max
+            1.0,                // est slippage
+            5.0,                // max slippage
+            2.0,                // current spread
+            2.0,                // normal spread
         );
         // Normal conditions → base slice = 100
         assert_eq!(qty, Decimal::from(100));
@@ -802,13 +856,16 @@ mod tests {
             Decimal::from(500),
             Decimal::from(10),
             Decimal::from(200),
-            4.0,   // 80% of max slippage
+            4.0, // 80% of max slippage
             5.0,
             2.0,
             2.0,
         );
         // Should reduce from 100
-        assert!(qty < Decimal::from(100), "qty={qty} should be < 100 with high slippage");
+        assert!(
+            qty < Decimal::from(100),
+            "qty={qty} should be < 100 with high slippage"
+        );
         assert!(qty >= Decimal::from(10), "qty={qty} should be >= min_slice");
     }
 
@@ -821,18 +878,21 @@ mod tests {
             Decimal::from(200),
             1.0,
             5.0,
-            6.0,   // 3× normal spread
+            6.0, // 3× normal spread
             2.0,
         );
         // Wide spread → reduce
-        assert!(qty < Decimal::from(100), "qty={qty} should be reduced with wide spread");
+        assert!(
+            qty < Decimal::from(100),
+            "qty={qty} should be reduced with wide spread"
+        );
     }
 
     #[test]
     fn test_adaptive_qty_remaining_less_than_base() {
         let qty = compute_adaptive_qty(
-            Decimal::from(100),  // base
-            Decimal::from(50),   // remaining < base
+            Decimal::from(100), // base
+            Decimal::from(50),  // remaining < base
             Decimal::from(10),
             Decimal::from(200),
             1.0,
@@ -849,13 +909,16 @@ mod tests {
             Decimal::from(1000), // base way too large
             Decimal::from(5000), // remaining
             Decimal::from(10),
-            Decimal::from(200),  // max
+            Decimal::from(200), // max
             0.5,
             5.0,
             2.0,
             2.0,
         );
-        assert!(qty <= Decimal::from(200), "qty={qty} should be clamped to max_slice");
+        assert!(
+            qty <= Decimal::from(200),
+            "qty={qty} should be clamped to max_slice"
+        );
     }
 
     // ── Limit price tests ────────────────────────────────────
@@ -866,10 +929,12 @@ mod tests {
             symbol: "TEST".to_string(),
             timestamp_ms: 0,
             bids: vec![crate::orderbook::PriceLevel::new(
-                Decimal::from_str("100.00").unwrap(), Decimal::from(50),
+                Decimal::from_str("100.00").unwrap(),
+                Decimal::from(50),
             )],
             asks: vec![crate::orderbook::PriceLevel::new(
-                Decimal::from_str("100.10").unwrap(), Decimal::from(50),
+                Decimal::from_str("100.10").unwrap(),
+                Decimal::from(50),
             )],
         };
         let price = compute_limit_price_for_side(&book, Side::Buy);
@@ -882,10 +947,12 @@ mod tests {
             symbol: "TEST".to_string(),
             timestamp_ms: 0,
             bids: vec![crate::orderbook::PriceLevel::new(
-                Decimal::from_str("100.00").unwrap(), Decimal::from(50),
+                Decimal::from_str("100.00").unwrap(),
+                Decimal::from(50),
             )],
             asks: vec![crate::orderbook::PriceLevel::new(
-                Decimal::from_str("100.10").unwrap(), Decimal::from(50),
+                Decimal::from_str("100.10").unwrap(),
+                Decimal::from(50),
             )],
         };
         let price = compute_limit_price_for_side(&book, Side::Sell);
@@ -900,8 +967,14 @@ mod tests {
             SliceStatus::Scheduled,
             SliceStatus::Executing,
             SliceStatus::Filled,
-            SliceStatus::PausedSpreadWide { current_bps: 10.0, normal_bps: 2.0 },
-            SliceStatus::PausedSlippageHigh { estimated_bps: 7.0, max_bps: 5.0 },
+            SliceStatus::PausedSpreadWide {
+                current_bps: 10.0,
+                normal_bps: 2.0,
+            },
+            SliceStatus::PausedSlippageHigh {
+                estimated_bps: 7.0,
+                max_bps: 5.0,
+            },
             SliceStatus::PausedKillSwitch,
             SliceStatus::Skipped("Risk limit".to_string()),
             SliceStatus::Failed("Network error".to_string()),

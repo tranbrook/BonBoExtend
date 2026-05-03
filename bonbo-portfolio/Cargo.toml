@@ -1,0 +1,17 @@
+[package]
+name = "bonbo-portfolio"
+version.workspace = true
+edition.workspace = true
+description = "BonBo Portfolio Analysis — correlation, VaR, concentration risk"
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]

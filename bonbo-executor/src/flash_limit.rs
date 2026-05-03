@@ -342,7 +342,10 @@ pub async fn execute_flash_limit(
 
     tracing::info!(
         "📊 FLASH-ROUTE {} {:?} {} | {} | spread={spread_bps:.1}bps dyn_flash={dyn_flash:.1} dyn_market={dyn_market:.1}",
-        symbol, side, qty, route,
+        symbol,
+        side,
+        qty,
+        route,
     );
 
     // ═══════════════════════════════════════════════════════════
@@ -353,7 +356,8 @@ pub async fn execute_flash_limit(
     if notional < config.min_notional {
         anyhow::bail!(
             "Flash limit: notional {} < min {}",
-            notional, config.min_notional
+            notional,
+            config.min_notional
         );
     }
 
@@ -377,10 +381,21 @@ pub async fn execute_flash_limit(
             // Place limit at the touch price with IOC behavior.
             // In our framework, place_limit already acts as IOC-equivalent
             // because the exchange fills what it can.
-            let touch_price = compute_touch_price(&book, side, config.touch_offset_ticks, config.price_decimals);
+            let touch_price = compute_touch_price(
+                &book,
+                side,
+                config.touch_offset_ticks,
+                config.price_decimals,
+            );
             flash_price = Some(touch_price);
 
-            tracing::info!("⚡ FLASH LIMIT: {} {:?} {} @ {}", symbol, side, qty, touch_price);
+            tracing::info!(
+                "⚡ FLASH LIMIT: {} {:?} {} @ {}",
+                symbol,
+                side,
+                qty,
+                touch_price
+            );
 
             match placer.place_limit(symbol, side, qty, touch_price).await {
                 Ok(fill) => {
@@ -394,8 +409,14 @@ pub async fn execute_flash_limit(
                     // Escalate to market
                     escalated_to_market = true;
                     let market_fill = execute_market_with_slippage_guard(
-                        placer, symbol, side, qty, &book, config.max_market_slippage_bps,
-                    ).await?;
+                        placer,
+                        symbol,
+                        side,
+                        qty,
+                        &book,
+                        config.max_market_slippage_bps,
+                    )
+                    .await?;
                     fills.push(market_fill);
                 }
             }
@@ -411,7 +432,13 @@ pub async fn execute_flash_limit(
             };
             flash_price = Some(limit_price);
 
-            tracing::info!("📐 ADAPTIVE LIMIT: {} {:?} {} @ {}", symbol, side, qty, limit_price);
+            tracing::info!(
+                "📐 ADAPTIVE LIMIT: {} {:?} {} @ {}",
+                symbol,
+                side,
+                qty,
+                limit_price
+            );
 
             match placer.place_limit(symbol, side, qty, limit_price).await {
                 Ok(fill) => {
@@ -423,8 +450,14 @@ pub async fn execute_flash_limit(
                     escalated_to_market = true;
                     tracing::info!("Adaptive limit not filled, escalating to market");
                     let market_fill = execute_market_with_slippage_guard(
-                        placer, symbol, side, qty, &book, config.max_market_slippage_bps,
-                    ).await?;
+                        placer,
+                        symbol,
+                        side,
+                        qty,
+                        &book,
+                        config.max_market_slippage_bps,
+                    )
+                    .await?;
                     fills.push(market_fill);
                 }
             }
@@ -433,8 +466,14 @@ pub async fn execute_flash_limit(
         OrderRoute::Market => {
             tracing::info!("🏪 MARKET: {} {:?} {}", symbol, side, qty);
             let market_fill = execute_market_with_slippage_guard(
-                placer, symbol, side, qty, &book, config.max_market_slippage_bps,
-            ).await?;
+                placer,
+                symbol,
+                side,
+                qty,
+                &book,
+                config.max_market_slippage_bps,
+            )
+            .await?;
             fills.push(market_fill);
         }
     }
@@ -442,9 +481,7 @@ pub async fn execute_flash_limit(
     // ═══════════════════════════════════════════════════════════
     // STEP 4: BUILD RESULT
     // ═══════════════════════════════════════════════════════════
-    let report = ExecutionReport::build(
-        symbol, side, "FLASH_LIMIT", qty, mid, fills, total_start,
-    );
+    let report = ExecutionReport::build(symbol, side, "FLASH_LIMIT", qty, mid, fills, total_start);
 
     // Compute savings: if we used flash limit, we saved the spread
     let savings_bps = if flash_filled && !escalated_to_market {
@@ -459,7 +496,10 @@ pub async fn execute_flash_limit(
 
     tracing::info!(
         "✅ FLASH-ROUTE DONE: {} | {} | flash_filled={} escalated={} savings={savings_bps:.1}bps | {total_latency_us}µs",
-        symbol, route, flash_filled, escalated_to_market,
+        symbol,
+        route,
+        flash_filled,
+        escalated_to_market,
     );
 
     Ok(FlashLimitResult {
@@ -482,7 +522,7 @@ pub async fn execute_flash_limit(
 /// Analyze the current spread and decide the order route.
 pub fn analyze_spread(
     book: &OrderBookSnapshot,
-    side: Side,
+    _side: Side,
     config: &FlashLimitConfig,
     tracker: &mut SpreadTracker,
 ) -> SpreadAnalysis {
@@ -509,7 +549,11 @@ pub fn analyze_spread(
             "static: flash={:.1} market={:.1}",
             config.flash_threshold_bps, config.market_threshold_bps,
         );
-        (config.flash_threshold_bps, config.market_threshold_bps, reason)
+        (
+            config.flash_threshold_bps,
+            config.market_threshold_bps,
+            reason,
+        )
     };
 
     // Decide route
@@ -564,8 +608,8 @@ fn compute_touch_price(
     offset_ticks: u32,
     price_decimals: u32,
 ) -> Decimal {
-    let tick = Decimal::from_f64_retain(10f64.powi(-(price_decimals as i32)))
-        .unwrap_or_else(|| {
+    let tick =
+        Decimal::from_f64_retain(10f64.powi(-(price_decimals as i32))).unwrap_or_else(|| {
             let divisor = Decimal::from(10u64.pow(price_decimals.min(9)));
             Decimal::ONE / divisor
         });
@@ -585,7 +629,7 @@ fn compute_touch_price(
 }
 
 /// Compute adaptive offset (half spread in price terms).
-fn compute_adaptive_offset(book: &OrderBookSnapshot, side: Side, price_decimals: u32) -> Decimal {
+fn compute_adaptive_offset(book: &OrderBookSnapshot, _side: Side, price_decimals: u32) -> Decimal {
     let spread = book.spread().unwrap_or(Decimal::ZERO);
     let half_spread = round_to_tick(spread / Decimal::from(2), price_decimals);
     // We want a small improvement over mid
@@ -613,18 +657,19 @@ async fn execute_market_with_slippage_guard(
         Side::Sell => book.estimate_sell_slippage(qty),
     };
 
-    if let Some(ref est) = slip_est {
-        if est.slippage_bps > max_slippage_bps {
-            tracing::warn!(
-                "Market slippage {:.1}bps > max {:.1}bps — reducing qty",
-                est.slippage_bps, max_slippage_bps,
-            );
-            let max_qty = book.max_market_order(side, max_slippage_bps);
-            if max_qty > Decimal::ZERO {
-                return placer.place_market(symbol, side, max_qty).await;
-            } else {
-                anyhow::bail!("Market slippage guard: no safe quantity");
-            }
+    if let Some(ref est) = slip_est
+        && est.slippage_bps > max_slippage_bps
+    {
+        tracing::warn!(
+            "Market slippage {:.1}bps > max {:.1}bps — reducing qty",
+            est.slippage_bps,
+            max_slippage_bps,
+        );
+        let max_qty = book.max_market_order(side, max_slippage_bps);
+        if max_qty > Decimal::ZERO {
+            return placer.place_market(symbol, side, max_qty).await;
+        } else {
+            anyhow::bail!("Market slippage guard: no safe quantity");
         }
     }
 
@@ -679,8 +724,14 @@ mod tests {
         OrderBookSnapshot {
             symbol: "TEST".into(),
             timestamp_ms: 0,
-            bids: vec![PriceLevel::new(Decimal::from(bid), Decimal::from_str(bid_qty).unwrap())],
-            asks: vec![PriceLevel::new(Decimal::from(ask), Decimal::from_str(ask_qty).unwrap())],
+            bids: vec![PriceLevel::new(
+                Decimal::from(bid),
+                Decimal::from_str(bid_qty).unwrap(),
+            )],
+            asks: vec![PriceLevel::new(
+                Decimal::from(ask),
+                Decimal::from_str(ask_qty).unwrap(),
+            )],
         }
     }
 
@@ -748,7 +799,8 @@ mod tests {
             dynamic_enabled: false,
             ..Default::default()
         };
-        let mut tracker = SpreadTracker::new(config.base_spread_bps, config.volatility_multiplier, 20);
+        let mut tracker =
+            SpreadTracker::new(config.base_spread_bps, config.volatility_multiplier, 20);
         let analysis = analyze_spread(&book, Side::Buy, &config, &mut tracker);
         // spread ≈ 1.0 bps ≤ 3.0 → FlashLimit
         assert_eq!(analysis.route, OrderRoute::FlashLimit);
@@ -765,7 +817,8 @@ mod tests {
             abort_threshold_bps: 200.0,
             ..Default::default()
         };
-        let mut tracker = SpreadTracker::new(config.base_spread_bps, config.volatility_multiplier, 20);
+        let mut tracker =
+            SpreadTracker::new(config.base_spread_bps, config.volatility_multiplier, 20);
         let analysis = analyze_spread(&book, Side::Buy, &config, &mut tracker);
         // spread ≈ 99.5 bps → between flash and market → AdaptiveLimit
         assert_eq!(analysis.route, OrderRoute::AdaptiveLimit);
@@ -781,7 +834,8 @@ mod tests {
             abort_threshold_bps: 500.0,
             ..Default::default()
         };
-        let mut tracker = SpreadTracker::new(config.base_spread_bps, config.volatility_multiplier, 20);
+        let mut tracker =
+            SpreadTracker::new(config.base_spread_bps, config.volatility_multiplier, 20);
         let analysis = analyze_spread(&book, Side::Buy, &config, &mut tracker);
         // spread ≈ 488 bps → Market (below abort)
         assert_eq!(analysis.route, OrderRoute::Market);
@@ -795,7 +849,8 @@ mod tests {
             abort_threshold_bps: 100.0,
             ..Default::default()
         };
-        let mut tracker = SpreadTracker::new(config.base_spread_bps, config.volatility_multiplier, 20);
+        let mut tracker =
+            SpreadTracker::new(config.base_spread_bps, config.volatility_multiplier, 20);
         let analysis = analyze_spread(&book, Side::Buy, &config, &mut tracker);
         // spread ≈ 488 bps > 100 → Hold
         assert_eq!(analysis.route, OrderRoute::Hold);
@@ -907,8 +962,14 @@ mod tests {
 
     #[test]
     fn test_round_to_tick() {
-        assert_eq!(round_to_tick(Decimal::from_str("100.456").unwrap(), 2), Decimal::from_str("100.46").unwrap());
-        assert_eq!(round_to_tick(Decimal::from_str("100.454").unwrap(), 2), Decimal::from_str("100.45").unwrap());
+        assert_eq!(
+            round_to_tick(Decimal::from_str("100.456").unwrap(), 2),
+            Decimal::from_str("100.46").unwrap()
+        );
+        assert_eq!(
+            round_to_tick(Decimal::from_str("100.454").unwrap(), 2),
+            Decimal::from_str("100.45").unwrap()
+        );
     }
 
     // ── OrderRoute Display Tests ─────────────────────────────
@@ -926,8 +987,12 @@ mod tests {
     #[test]
     fn test_savings_flash_fill() {
         let book = tight_book();
-        let config = FlashLimitConfig { dynamic_enabled: false, ..Default::default() };
-        let mut tracker = SpreadTracker::new(config.base_spread_bps, config.volatility_multiplier, 20);
+        let config = FlashLimitConfig {
+            dynamic_enabled: false,
+            ..Default::default()
+        };
+        let mut tracker =
+            SpreadTracker::new(config.base_spread_bps, config.volatility_multiplier, 20);
         let analysis = analyze_spread(&book, Side::Buy, &config, &mut tracker);
 
         // Flash fill saves entire spread
@@ -943,21 +1008,37 @@ mod tests {
     #[test]
     fn test_spread_ratio_tight() {
         let book = tight_book();
-        let config = FlashLimitConfig { dynamic_enabled: false, base_spread_bps: 2.0, ..Default::default() };
+        let config = FlashLimitConfig {
+            dynamic_enabled: false,
+            base_spread_bps: 2.0,
+            ..Default::default()
+        };
         let mut tracker = SpreadTracker::new(2.0, 1.5, 20);
         let analysis = analyze_spread(&book, Side::Buy, &config, &mut tracker);
         // spread ≈ 1.0 bps, base = 2.0 → ratio ≈ 0.5
-        assert!(analysis.spread_ratio < 1.0, "tight spread ratio should be < 1: {}", analysis.spread_ratio);
+        assert!(
+            analysis.spread_ratio < 1.0,
+            "tight spread ratio should be < 1: {}",
+            analysis.spread_ratio
+        );
     }
 
     #[test]
     fn test_spread_ratio_wide() {
         let book = wide_book();
-        let config = FlashLimitConfig { dynamic_enabled: false, base_spread_bps: 2.0, ..Default::default() };
+        let config = FlashLimitConfig {
+            dynamic_enabled: false,
+            base_spread_bps: 2.0,
+            ..Default::default()
+        };
         let mut tracker = SpreadTracker::new(2.0, 1.5, 20);
         let analysis = analyze_spread(&book, Side::Buy, &config, &mut tracker);
         // spread ≈ 488 bps, base = 2.0 → ratio ≈ 244
-        assert!(analysis.spread_ratio > 100.0, "wide spread ratio should be huge: {}", analysis.spread_ratio);
+        assert!(
+            analysis.spread_ratio > 100.0,
+            "wide spread ratio should be huge: {}",
+            analysis.spread_ratio
+        );
     }
 
     // ── Serialization Tests ──────────────────────────────────
@@ -965,8 +1046,12 @@ mod tests {
     #[test]
     fn test_analysis_serialization() {
         let book = tight_book();
-        let config = FlashLimitConfig { dynamic_enabled: false, ..Default::default() };
-        let mut tracker = SpreadTracker::new(config.base_spread_bps, config.volatility_multiplier, 20);
+        let config = FlashLimitConfig {
+            dynamic_enabled: false,
+            ..Default::default()
+        };
+        let mut tracker =
+            SpreadTracker::new(config.base_spread_bps, config.volatility_multiplier, 20);
         let analysis = analyze_spread(&book, Side::Buy, &config, &mut tracker);
 
         let json = serde_json::to_string(&analysis).unwrap();
@@ -987,7 +1072,12 @@ mod tests {
 
     #[test]
     fn test_route_serialization() {
-        for route in [OrderRoute::FlashLimit, OrderRoute::AdaptiveLimit, OrderRoute::Market, OrderRoute::Hold] {
+        for route in [
+            OrderRoute::FlashLimit,
+            OrderRoute::AdaptiveLimit,
+            OrderRoute::Market,
+            OrderRoute::Hold,
+        ] {
             let json = serde_json::to_string(&route).unwrap();
             let back: OrderRoute = serde_json::from_str(&json).unwrap();
             assert_eq!(back, route);

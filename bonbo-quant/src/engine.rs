@@ -15,6 +15,68 @@ use crate::strategy::{Strategy, StrategyContext};
 use anyhow::Result;
 use bonbo_ta::models::OhlcvCandle;
 
+/// Multi-timeframe context for strict MTF mode.
+///
+/// Tracks higher-timeframe bar completion to prevent look-ahead bias.
+/// When `strict_mtf` is enabled, signals are only emitted when the
+/// higher-timeframe bar is confirmed complete.
+struct MtfContext {
+    /// The MTF guard from bonbo-regime.
+    guard: bonbo_regime::MtfGuard,
+    /// Whether strict mode is enabled.
+    enabled: bool,
+    /// Whether at least one HTF bar has completed.
+    has_completed_htf: bool,
+}
+
+impl MtfContext {
+    /// Create a new MTF context for given timeframes.
+    fn new(
+        higher_tf: bonbo_regime::MtfTimeFrame,
+        lower_tf: bonbo_regime::MtfTimeFrame,
+        enabled: bool,
+    ) -> Self {
+        Self {
+            guard: bonbo_regime::MtfGuard::new(higher_tf, lower_tf),
+            enabled,
+            has_completed_htf: false,
+        }
+    }
+
+    /// Feed a candle and check if higher-timeframe bar just completed.
+    /// Returns true if the HTF bar is complete (safe to use HTF indicators).
+    fn feed_and_check(&mut self, candle: &OhlcvCandle) -> bool {
+        if !self.enabled {
+            return true; // Not strict → always allow
+        }
+
+        let _completed = self.guard.on_bar_close(
+            candle.open,
+            candle.high,
+            candle.low,
+            candle.close,
+            candle.volume,
+            candle.timestamp,
+        );
+
+        if self.guard.is_bar_complete() {
+            self.has_completed_htf = true;
+        }
+
+        // In strict mode: only allow HTF signals when bar is complete
+        self.guard.is_bar_complete()
+    }
+
+    /// Check if we have at least one confirmed HTF bar.
+    #[allow(dead_code)]
+    fn is_ready(&self) -> bool {
+        if !self.enabled {
+            return true;
+        }
+        self.has_completed_htf
+    }
+}
+
 /// Event-driven backtesting engine.
 pub struct BacktestEngine<S: Strategy> {
     config: BacktestConfig,
@@ -42,8 +104,19 @@ impl<S: Strategy> BacktestEngine<S> {
         let mut all_trades: Vec<Trade> = Vec::new();
         let mut current_position: Option<EnginePosition> = None;
 
+        // MTF strict mode: gate signals on higher-timeframe bar completion
+        let mut mtf_ctx = MtfContext::new(
+            bonbo_regime::MtfTimeFrame::H4,
+            bonbo_regime::MtfTimeFrame::H1,
+            self.config.strict_mtf,
+        );
+
         for (i, candle) in candles.iter().enumerate() {
             ctx.bar_index = i;
+
+            // ── STEP 0: MTF guard — check higher-timeframe bar completion ──
+            let htf_completed = mtf_ctx.feed_and_check(candle);
+            ctx.mtf_bar_complete = htf_completed;
 
             // ── STEP 1: Check stop loss / take profit on current position ──
             if let Some(pos) = current_position.as_ref() {
@@ -102,8 +175,7 @@ impl<S: Strategy> BacktestEngine<S> {
                     Buy => {
                         // BUG#6 FIX: Guard against zero/negative equity
                         if current_position.is_none() && ctx.equity > 0.0 {
-                            let fill_price =
-                                self.apply_slippage(candle.close, Buy);
+                            let fill_price = self.apply_slippage(candle.close, Buy);
                             let qty = if order.quantity > 0.0 {
                                 order.quantity
                             } else {
@@ -114,14 +186,10 @@ impl<S: Strategy> BacktestEngine<S> {
                             // BUG#3 FIX: Use Order's SL/TP, fall back to config defaults
                             let sl_price = order
                                 .stop_loss
-                                .unwrap_or_else(|| {
-                                    fill_price * (1.0 - self.config.default_stop_loss)
-                                });
-                            let tp_price = order
-                                .take_profit
-                                .unwrap_or_else(|| {
-                                    fill_price * (1.0 + self.config.default_take_profit)
-                                });
+                                .unwrap_or({ fill_price * (1.0 - self.config.default_stop_loss) });
+                            let tp_price = order.take_profit.unwrap_or({
+                                fill_price * (1.0 + self.config.default_take_profit)
+                            });
 
                             ctx.equity -= fee;
                             current_position = Some(EnginePosition {
@@ -131,16 +199,13 @@ impl<S: Strategy> BacktestEngine<S> {
                                 stop_loss: sl_price,
                                 take_profit: tp_price,
                             });
-                            ctx.positions.insert(
-                                order.symbol.clone(),
-                                (fill_price, qty, OrderSide::Buy),
-                            );
+                            ctx.positions
+                                .insert(order.symbol.clone(), (fill_price, qty, OrderSide::Buy));
                         }
                     }
                     Sell => {
                         if let Some(pos) = current_position.take() {
-                            let fill_price =
-                                self.apply_slippage(candle.close, Sell);
+                            let fill_price = self.apply_slippage(candle.close, Sell);
                             let qty = pos.quantity;
                             let entry = pos.entry_price;
 
@@ -321,7 +386,9 @@ mod tests {
         // Create a simple strategy that buys at first candle with SL=4%
         struct BuyOnceStrategy;
         impl Strategy for BuyOnceStrategy {
-            fn name(&self) -> &str { "BuyOnce" }
+            fn name(&self) -> &str {
+                "BuyOnce"
+            }
             fn on_bar(&mut self, ctx: &mut StrategyContext, candle: &OhlcvCandle) -> Vec<Order> {
                 if ctx.bar_index == 5 {
                     vec![Order {
@@ -375,7 +442,8 @@ mod tests {
         assert!(
             (trade.exit_price - expected_sl).abs() < tolerance,
             "Exit price ({:.2}) should be near SL ({:.2}), not near close ($99.00)",
-            trade.exit_price, expected_sl
+            trade.exit_price,
+            expected_sl
         );
         assert!(
             trade.exit_price < 97.0,
@@ -391,7 +459,9 @@ mod tests {
     fn test_tp_exit_price_is_tp_price_not_close() {
         struct BuyOnceStrategy;
         impl Strategy for BuyOnceStrategy {
-            fn name(&self) -> &str { "BuyOnce" }
+            fn name(&self) -> &str {
+                "BuyOnce"
+            }
             fn on_bar(&mut self, ctx: &mut StrategyContext, candle: &OhlcvCandle) -> Vec<Order> {
                 if ctx.bar_index == 2 {
                     vec![Order {
@@ -442,7 +512,8 @@ mod tests {
         assert!(
             (trade.exit_price - expected_tp).abs() < tolerance,
             "Exit ({:.2}) should be near TP ({:.2}), not close ($105)",
-            trade.exit_price, expected_tp
+            trade.exit_price,
+            expected_tp
         );
         assert!(
             trade.exit_price > 107.0,
@@ -496,7 +567,9 @@ mod tests {
     fn test_uses_order_sl_tp_not_config_defaults() {
         struct CustomSlTpStrategy;
         impl Strategy for CustomSlTpStrategy {
-            fn name(&self) -> &str { "CustomSLTP" }
+            fn name(&self) -> &str {
+                "CustomSLTP"
+            }
             fn on_bar(&mut self, ctx: &mut StrategyContext, candle: &OhlcvCandle) -> Vec<Order> {
                 if ctx.bar_index == 0 {
                     vec![Order {
@@ -548,7 +621,8 @@ mod tests {
             trade.exit_price > 96.5 && trade.exit_price < 99.0,
             "Exit ({:.2}) should be near Order SL ({:.2}), not config SL ({}). \
              Proves Order SL/TP takes priority.",
-            trade.exit_price, expected_sl,
+            trade.exit_price,
+            expected_sl,
             trade.entry_price * 0.95
         );
     }

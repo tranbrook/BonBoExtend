@@ -4,26 +4,35 @@ use anyhow::{Context, Result};
 use std::collections::HashMap;
 use tracing::{debug, instrument, warn};
 
+use crate::binance_config::BinanceEndpoints;
 use crate::models::MarketDataCandle;
 
-const BINANCE_API_BASE: &str = "https://api.binance.com";
-
 /// Binance market data fetcher.
+///
+/// Automatically selects Spot or Futures endpoints based on
+/// `BINANCE_MARKET_TYPE` env var (default: `spot`, set `futures` for USDT-M futures).
 #[derive(Debug, Clone)]
 pub struct MarketDataFetcher {
     client: reqwest::Client,
     base_url: String,
+    api_prefix: String,
 }
 
 impl MarketDataFetcher {
-    /// Create a new fetcher with default Binance API endpoint.
+    /// Create a new fetcher using the global market type (env `BINANCE_MARKET_TYPE`).
+    ///
+    /// - `spot` (default) → `https://api.binance.com/api/v3/...`
+    /// - `futures`       → `https://fapi.binance.com/fapi/v1/...`
     pub fn new() -> Self {
+        let ep = BinanceEndpoints::current();
+        tracing::info!("MarketDataFetcher using: {}", ep.label);
         Self {
             client: reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(30))
                 .build()
                 .expect("failed to build reqwest client"),
-            base_url: BINANCE_API_BASE.to_string(),
+            base_url: ep.base_url.to_string(),
+            api_prefix: ep.api_prefix.to_string(),
         }
     }
 
@@ -35,14 +44,17 @@ impl MarketDataFetcher {
                 .build()
                 .expect("failed to build reqwest client"),
             base_url: base_url.into(),
+            api_prefix: "/api/v3".to_string(),
         }
     }
 
     /// Create a fetcher with a pre-built reqwest client (for testing with mock servers).
     pub fn with_client(client: reqwest::Client) -> Self {
+        let ep = BinanceEndpoints::current();
         Self {
             client,
-            base_url: BINANCE_API_BASE.to_string(),
+            base_url: ep.base_url.to_string(),
+            api_prefix: ep.api_prefix.to_string(),
         }
     }
 
@@ -61,8 +73,8 @@ impl MarketDataFetcher {
         limit: Option<u32>,
     ) -> Result<Vec<MarketDataCandle>> {
         let mut url = format!(
-            "{}/api/v3/klines?symbol={}&interval={}",
-            self.base_url, symbol, interval
+            "{}{}/klines?symbol={}&interval={}",
+            self.base_url, self.api_prefix, symbol, interval
         );
 
         if let Some(lim) = limit {
@@ -95,7 +107,10 @@ impl MarketDataFetcher {
     /// Fetch current ticker price for a symbol.
     #[instrument(skip(self), fields(symbol = %symbol))]
     pub async fn fetch_ticker_price(&self, symbol: &str) -> Result<f64> {
-        let url = format!("{}/api/v3/ticker/price?symbol={}", self.base_url, symbol);
+        let url = format!(
+            "{}{}/ticker/price?symbol={}",
+            self.base_url, self.api_prefix, symbol
+        );
 
         debug!("Fetching ticker price: {}", url);
 

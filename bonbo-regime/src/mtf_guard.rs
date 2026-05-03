@@ -158,8 +158,8 @@ impl MtfGuard {
     /// - H4 → D1 (ratio 6)
     /// - H1 → D1 (ratio 24)
     pub fn new(higher_tf: MtfTimeFrame, lower_tf: MtfTimeFrame) -> Self {
-        let higher_secs = higher_tf.duration_secs() as i64;
-        let lower_secs = lower_tf.duration_secs() as i64;
+        let higher_secs = higher_tf.duration_secs();
+        let lower_secs = lower_tf.duration_secs();
         let ratio = (higher_secs / lower_secs).max(1) as usize;
 
         Self {
@@ -196,7 +196,8 @@ impl MtfGuard {
         }
 
         // Update aggregation buffer
-        self.buffer.update(open, high, low, close, volume, timestamp);
+        self.buffer
+            .update(open, high, low, close, volume, timestamp);
         self.bars_in_window += 1;
 
         // Check if higher-TF bar is complete
@@ -261,7 +262,11 @@ impl MtfGuard {
     ///
     /// **Usage**: Call this to get the "safe" value for signal generation.
     /// It returns the last CONFIRMED value, not the current incomplete one.
-    pub fn forward_fill<T: Copy>(&self, current: Option<T>, last_completed: Option<T>) -> Option<T> {
+    pub fn forward_fill<T: Copy>(
+        &self,
+        current: Option<T>,
+        last_completed: Option<T>,
+    ) -> Option<T> {
         last_completed.or(current)
     }
 
@@ -287,7 +292,14 @@ mod tests {
 
         // Feed 3 1h bars → no completion
         for i in 0..3 {
-            let result = guard.on_bar_close(100.0 + i as f64, 101.0, 99.0, 100.0 + i as f64, 1000.0, i * 3600);
+            let result = guard.on_bar_close(
+                100.0 + i as f64,
+                101.0,
+                99.0,
+                100.0 + i as f64,
+                1000.0,
+                i * 3600,
+            );
             assert!(result.is_none(), "Bar {} should not complete 4h", i);
         }
 
@@ -312,7 +324,10 @@ mod tests {
 
         // Start new 4h bar — should NOT be complete
         guard.on_bar_close(104.0, 105.0, 103.0, 104.5, 500.0, 4 * 3600);
-        assert!(!guard.is_bar_complete(), "Incomplete bar should not be marked complete");
+        assert!(
+            !guard.is_bar_complete(),
+            "Incomplete bar should not be marked complete"
+        );
 
         // Completed close should still be the old value
         assert_eq!(guard.completed_close(), Some(103.0));
@@ -347,7 +362,9 @@ mod tests {
         // Feed 6 H4 bars
         let mut completed = Vec::new();
         for i in 0..6 {
-            if let Some(bar) = guard.on_bar_close(50.0, 51.0, 49.0, 50.0 + i as f64, 5000.0, i * 14400) {
+            if let Some(bar) =
+                guard.on_bar_close(50.0, 51.0, 49.0, 50.0 + i as f64, 5000.0, i * 14400)
+            {
                 completed.push(bar);
             }
         }

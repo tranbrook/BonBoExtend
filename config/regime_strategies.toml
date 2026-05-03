@@ -1,0 +1,53 @@
+# Regime → Strategy mapping for best_trade.rs scanner
+# Each regime maps to strategies ordered by priority
+
+[trending]
+strategies = [
+    { name = "ALMA Crossover", params = { fast = 10, slow = 30 }, weight = 1.0 },
+    { name = "SuperSmoother Slope", params = { period = 20, min_slope = 0.001 }, weight = 0.9 },
+    { name = "SMA Crossover", params = { fast = 10, slow = 30 }, weight = 0.8 },
+    { name = "MACD Crossover", params = { fast = 12, slow = 26, signal = 9 }, weight = 0.7 },
+    { name = "Hurst Regime-Switch", params = {}, weight = 0.6 },
+]
+
+[mean_reverting]
+strategies = [
+    { name = "RSI Mean Reversion", params = { period = 14, oversold = 30.0, overbought = 70.0 }, weight = 1.0 },
+    { name = "Bollinger Bands", params = { period = 20, std_dev = 2.0 }, weight = 0.9 },
+    { name = "Hurst Regime-Switch", params = {}, weight = 0.6 },
+]
+
+[random_walk]
+strategies = [
+    { name = "Hurst Regime-Switch", params = {}, weight = 1.0 },
+    { name = "Regime Adaptive", params = {}, weight = 0.9 },
+]
+
+[scoring_weights]
+# Timeframe weights for MTF consensus
+tf_1h = 0.30
+tf_4h = 0.40
+tf_1d = 0.30
+
+# Signal family weights
+rsi_weight = 1.0
+macd_weight = 1.0
+bb_weight = 1.0
+alma_weight = 0.75
+cmo_weight = 0.5
+laguerre_weight = 0.75
+hurst_weight = 0.5
+
+# Risk management
+base_risk_pct = 0.02
+sl_trending_mult = 2.0
+sl_meanrev_mult = 1.5
+sl_random_mult = 2.5
+tp_rr_ratio = 1.5
+
+# Correlation filter
+max_correlation = 0.85
+
+# Sentiment
+fear_bonus = 5.0
+greed_penalty = -6.0

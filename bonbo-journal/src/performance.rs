@@ -33,7 +33,12 @@ impl<'a> PerformanceTracker<'a> {
         // Direction accuracy
         let direction_correct = with_outcome
             .iter()
-            .filter(|e| e.outcome.as_ref().expect("filtered above").direction_correct)
+            .filter(|e| {
+                e.outcome
+                    .as_ref()
+                    .expect("filtered above")
+                    .direction_correct
+            })
             .count() as u32;
         let direction_accuracy = direction_correct as f64 / total_with_outcome as f64;
 
@@ -47,21 +52,38 @@ impl<'a> PerformanceTracker<'a> {
         // Win rate (positive return)
         let winners = with_outcome
             .iter()
-            .filter(|e| e.outcome.as_ref().expect("filtered above").actual_return_pct > 0.0)
+            .filter(|e| {
+                e.outcome
+                    .as_ref()
+                    .expect("filtered above")
+                    .actual_return_pct
+                    > 0.0
+            })
             .count() as u32;
         let win_rate = winners as f64 / total_with_outcome as f64;
 
         // Average return
         let avg_return_pct = with_outcome
             .iter()
-            .map(|e| e.outcome.as_ref().expect("filtered above").actual_return_pct)
+            .map(|e| {
+                e.outcome
+                    .as_ref()
+                    .expect("filtered above")
+                    .actual_return_pct
+            })
             .sum::<f64>()
             / total_with_outcome as f64;
 
         // Sharpe of predictions (simplified annualized)
         let returns: Vec<f64> = with_outcome
             .iter()
-            .map(|e| e.outcome.as_ref().expect("filtered above").actual_return_pct / 100.0)
+            .map(|e| {
+                e.outcome
+                    .as_ref()
+                    .expect("filtered above")
+                    .actual_return_pct
+                    / 100.0
+            })
             .collect();
         let sharpe = compute_sharpe(&returns);
 
@@ -151,7 +173,12 @@ impl<'a> PerformanceTracker<'a> {
             let recent: Vec<_> = with_outcome.iter().rev().take(10).collect();
             let recent_correct = recent
                 .iter()
-                .filter(|e| e.outcome.as_ref().expect("filtered above").direction_correct)
+                .filter(|e| {
+                    e.outcome
+                        .as_ref()
+                        .expect("filtered above")
+                        .direction_correct
+                })
                 .count();
             recent_correct as f64 / 10.0
         } else {

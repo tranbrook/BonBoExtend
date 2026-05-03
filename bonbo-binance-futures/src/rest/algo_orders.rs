@@ -13,6 +13,39 @@ use super::FuturesRestClient;
 use crate::models::*;
 use rust_decimal::Decimal;
 
+/// Flexible code deserializer — handles both String and Integer from Binance API.
+/// Binance sometimes returns `code: 0` (int) and sometimes `code: "200"` (string).
+fn deserialize_flexible_code<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de;
+
+    struct CodeVisitor;
+
+    impl<'de> de::Visitor<'de> for CodeVisitor {
+        type Value = String;
+
+        fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "a string or integer")
+        }
+
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<String, E> {
+            Ok(v.to_string())
+        }
+
+        fn visit_i64<E: de::Error>(self, v: i64) -> Result<String, E> {
+            Ok(v.to_string())
+        }
+
+        fn visit_u64<E: de::Error>(self, v: u64) -> Result<String, E> {
+            Ok(v.to_string())
+        }
+    }
+
+    deserializer.deserialize_any(CodeVisitor)
+}
+
 /// Algo order response from Binance.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AlgoOrderResponse {
@@ -20,10 +53,10 @@ pub struct AlgoOrderResponse {
     #[serde(default)]
     pub algo_id: i64,
     /// Client algo order ID.
-    #[serde(default)]
+    #[serde(default, rename = "clientAlgoId")]
     pub client_algo_id: String,
-    /// Response code ("200" = success).
-    #[serde(default)]
+    /// Response code (200 or 0 = success). Binance may return integer or string.
+    #[serde(default, deserialize_with = "deserialize_flexible_code")]
     pub code: String,
     /// Response message.
     #[serde(default)]
@@ -39,7 +72,7 @@ pub struct AlgoOrderResponse {
 impl AlgoOrderResponse {
     /// Check if the order was successful.
     pub fn is_success(&self) -> bool {
-        self.code == "200" || self.algo_id > 0
+        self.code == "200" || self.code == "0" || self.algo_id > 0
     }
 }
 
@@ -104,6 +137,7 @@ impl AlgoOrdersClient {
     /// Place a new algo order (STOP_MARKET, TAKE_PROFIT_MARKET, etc.).
     ///
     /// Endpoint: `POST /fapi/v1/algoOrder`
+    #[allow(clippy::too_many_arguments)]
     pub async fn place_algo_order(
         client: &FuturesRestClient,
         symbol: &str,
@@ -156,6 +190,7 @@ impl AlgoOrdersClient {
 
         let query = params.join("&");
         let value = client.post_signed("/fapi/v1/algoOrder", &query).await?;
+        tracing::info!("🔴 ALGO RAW RESPONSE: {:?}", value);
         let response: AlgoOrderResponse = serde_json::from_value(value)?;
         Ok(response)
     }
@@ -384,10 +419,7 @@ impl AlgoOrdersClient {
         for &algo_id in algo_ids {
             match Self::cancel_algo_order(client, Some(algo_id), None).await {
                 Ok(resp) => {
-                    tracing::info!(
-                        "🧹 Cancelled orphan algo order #{}",
-                        algo_id
-                    );
+                    tracing::info!("🧹 Cancelled orphan algo order #{}", algo_id);
                     cancelled.push(resp);
                 }
                 Err(e) => {
@@ -403,5 +435,49 @@ impl AlgoOrdersClient {
         }
 
         Ok(cancelled)
+    }
+
+    /// List open algo sub-orders for a symbol.
+    /// GET /fapi/v1/algoOrder
+    pub async fn list_open_algo_orders(
+        client: &FuturesRestClient,
+        symbol: &str,
+    ) -> anyhow::Result<serde_json::Value> {
+        let params = format!("symbol={}", symbol);
+        client.get_signed("/fapi/v1/algoOrder", &params).await
+    }
+
+    /// Cancel all open algo orders for a symbol by querying first, then cancelling each.
+    pub async fn cancel_all_algo_orders_for_symbol(
+        client: &FuturesRestClient,
+        symbol: &str,
+    ) -> anyhow::Result<Vec<AlgoCancelResponse>> {
+        let open = Self::list_open_algo_orders(client, symbol).await?;
+        let algo_ids: Vec<i64> = if let Some(orders) = open.as_array() {
+            orders
+                .iter()
+                .filter_map(|o| o.get("algoId").and_then(|v| v.as_i64()))
+                .collect()
+        } else {
+            vec![]
+        };
+
+        if algo_ids.is_empty() {
+            // Try individual sub-orders
+            let sub_ids: Vec<i64> = if let Some(orders) = open.as_array() {
+                orders
+                    .iter()
+                    .filter_map(|o| o.get("orderId").and_then(|v| v.as_i64()))
+                    .collect()
+            } else {
+                vec![]
+            };
+            if sub_ids.is_empty() {
+                tracing::info!("No open algo orders for {}", symbol);
+                return Ok(vec![]);
+            }
+        }
+
+        Self::cancel_sl_tp_algo_orders(client, &algo_ids).await
     }
 }

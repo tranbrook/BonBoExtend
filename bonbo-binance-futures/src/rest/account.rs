@@ -29,7 +29,10 @@ impl AccountClient {
     }
 
     /// Get position for a specific symbol.
-    pub async fn get_position(client: &FuturesRestClient, symbol: &str) -> anyhow::Result<Option<FuturesPosition>> {
+    pub async fn get_position(
+        client: &FuturesRestClient,
+        symbol: &str,
+    ) -> anyhow::Result<Option<FuturesPosition>> {
         let params = format!("symbol={}", symbol);
         let value = client.get_signed("/fapi/v3/positionRisk", &params).await?;
         let positions: Vec<FuturesPosition> = serde_json::from_value(value)?;
@@ -37,7 +40,11 @@ impl AccountClient {
     }
 
     /// Set leverage for a symbol.
-    pub async fn set_leverage(client: &FuturesRestClient, symbol: &str, leverage: u32) -> anyhow::Result<Leverage> {
+    pub async fn set_leverage(
+        client: &FuturesRestClient,
+        symbol: &str,
+        leverage: u32,
+    ) -> anyhow::Result<Leverage> {
         let params = format!("symbol={}&leverage={}", symbol, leverage);
         let value = client.post_signed("/fapi/v1/leverage", &params).await?;
         let result: Leverage = serde_json::from_value(value)?;

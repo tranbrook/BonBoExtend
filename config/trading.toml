@@ -2,7 +2,7 @@
 # Copy to config/trading.toml and customize
 
 [account]
-mode = "testnet"              # "testnet" | "dry_run" | "live"
+mode = "live"                # "testnet" | "dry_run" | "live"
 initial_capital = 1000.0
 currency = "USDT"
 

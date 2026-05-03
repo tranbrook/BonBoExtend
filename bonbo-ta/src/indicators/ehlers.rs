@@ -157,12 +157,8 @@ impl RoofingFilter {
         if trend_period < 4 || cycle_period < 2 {
             return None;
         }
-        let _hp_alpha = (0.707 * 2.0 * std::f64::consts::PI / trend_period as f64)
-            .cos()
-            .acos()
-            .cos(); // 1-pole HP alpha
 
-        // Simpler derivation: alpha = (1 - sin(2π/trend_period)) / cos(2π/trend_period)
+        // High-pass filter alpha: α = (1 - sin(2π/trend_period)) / cos(2π/trend_period)
         let angle = 2.0 * std::f64::consts::PI / trend_period as f64;
         let cos_a = angle.cos();
         let sin_a = angle.sin();

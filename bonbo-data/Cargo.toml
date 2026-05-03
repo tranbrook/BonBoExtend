@@ -8,6 +8,7 @@ license.workspace = true
 
 [dependencies]
 bonbo-ta = { path = "../bonbo-ta" }
+bonbo-binance-futures = { path = "../bonbo-binance-futures" }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -17,3 +18,8 @@ chrono = { workspace = true }
 reqwest = { workspace = true }
 tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }
+rust_decimal = { workspace = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full", "test-util"] }
+rust_decimal_macros = "1"

@@ -1,8 +1,8 @@
 //! Rate limiter for Binance API.
 //! Tracks weight usage per IP and per UID.
 
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Instant;
 use tokio::sync::Mutex;
 

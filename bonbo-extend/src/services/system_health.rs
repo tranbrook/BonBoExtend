@@ -2,8 +2,8 @@
 //!
 //! Replaces the dummy health check with actual CPU/Memory monitoring.
 
-use crate::plugin::{PluginContext, PluginMetadata, ServicePlugin};
 use async_trait::async_trait;
+use bonbo_extend_core::{PluginContext, PluginMetadata, ServicePlugin};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};

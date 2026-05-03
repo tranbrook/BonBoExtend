@@ -7,8 +7,8 @@
 //! - CMO (Chande Momentum Oscillator) — fast momentum
 //! - Laguerre RSI (Ehlers) — adaptive oscillator
 
-use crate::plugin::{ParameterSchema, PluginContext, PluginMetadata, ToolPlugin, ToolSchema};
 use async_trait::async_trait;
+use bonbo_extend_core::{ParameterSchema, PluginContext, PluginMetadata, ToolPlugin, ToolSchema};
 use bonbo_ta::MarketCharacter;
 use serde_json::{Value, json};
 
@@ -79,13 +79,13 @@ impl TechnicalAnalysisPlugin {
         result.push_str("━━━ **Traditional Indicators** ━━━\n\n");
 
         if let Some(Some(v)) = analysis.sma20.last() {
-            result.push_str(&format!("📈 **SMA(20)**: ${:.2}\n", v));
+            result.push_str(&format!("📈 **SMA(20) (#1)**: ${:.2}\n", v));
         }
         if let Some(Some(v)) = analysis.ema12.last() {
-            result.push_str(&format!("📈 **EMA(12)**: ${:.2}\n", v));
+            result.push_str(&format!("📈 **EMA(12) (#2)**: ${:.2}\n", v));
         }
         if let Some(Some(v)) = analysis.ema26.last() {
-            result.push_str(&format!("📈 **EMA(26)**: ${:.2}\n", v));
+            result.push_str(&format!("📈 **EMA(26) (#3)**: ${:.2}\n", v));
         }
         if let Some(Some(v)) = analysis.rsi14.last() {
             let label = if *v > 70.0 {
@@ -95,11 +95,11 @@ impl TechnicalAnalysisPlugin {
             } else {
                 "⚪ Neutral"
             };
-            result.push_str(&format!("\n📉 **RSI(14)**: {:.1} {}\n", v, label));
+            result.push_str(&format!("📉 **RSI(14) (#4)**: {:.1} {}\n", v, label));
         }
         if let Some(Some(m)) = analysis.macd.last() {
             result.push_str(&format!(
-                "\n📊 **MACD**: line={:.4} signal={:.4} hist={:.4} {}\n",
+                "📊 **MACD (#5)**: line={:.4} signal={:.4} hist={:.4} {}\n",
                 m.macd_line,
                 m.signal_line,
                 m.histogram,
@@ -108,7 +108,7 @@ impl TechnicalAnalysisPlugin {
         }
         if let Some(Some(bb)) = analysis.bb.last() {
             result.push_str(&format!(
-                "\n🎯 **BB(20,2)**: upper=${:.2} mid=${:.2} lower=${:.2} %B={:.2}\n",
+                "🎯 **BB(20,2) (#6)**: upper=${:.2} mid=${:.2} lower=${:.2} %B={:.2}\n",
                 bb.upper, bb.middle, bb.lower, bb.percent_b
             ));
         }
@@ -116,7 +116,7 @@ impl TechnicalAnalysisPlugin {
         // ── Financial-Hacker.com Indicators ──
         result.push_str("\n\n━━━ **Financial-Hacker Indicators** ━━━\n\n");
 
-        // ALMA crossover
+        // ALMA crossover (#7)
         if let (Some(alma_fast), Some(alma_slow)) = (
             analysis.alma10.last().and_then(|v| *v),
             analysis.alma30.last().and_then(|v| *v),
@@ -132,14 +132,78 @@ impl TechnicalAnalysisPlugin {
                 "🔴 Bearish"
             };
             result.push_str(&format!(
-                "🔮 **ALMA(10)**: ${:.2} | **ALMA(30)**: ${:.2} → {} ({:+.2}%)\n",
+                "🔮 **ALMA Crossover (#7)**: ALMA(10)=${:.2} | ALMA(30)=${:.2} → {} ({:+.2}%)\n",
                 alma_fast, alma_slow, cross, diff_pct
             ));
         } else if let Some(Some(v)) = analysis.alma10.last() {
-            result.push_str(&format!("🔮 **ALMA(10)**: ${:.2}\n", v));
+            result.push_str(&format!("🔮 **ALMA(10) (#7)**: ${:.2}\n", v));
         }
 
-        // SuperSmoother slope
+        // LaguerreRSI Dual-Gamma (#8) — combined fast (γ=0.3) + slow (γ=0.6), crypto-optimized
+        let lrsi_slow = analysis.laguerre_rsi.last().and_then(|v| *v);
+        let lrsi_fast = analysis.laguerre_rsi_fast.last().and_then(|v| *v);
+        match (lrsi_slow, lrsi_fast) {
+            (Some(slow), Some(fast)) => {
+                let slow_label = if slow > 0.8 {
+                    "🔴 Overbought"
+                } else if slow < 0.2 {
+                    "🟢 Oversold"
+                } else {
+                    "⚪ Neutral"
+                };
+                let fast_label = if fast > 0.8 {
+                    "🔴 Overbought"
+                } else if fast < 0.2 {
+                    "🟢 Oversold"
+                } else {
+                    "⚪ Neutral"
+                };
+                let diff = fast - slow;
+                let divergence_str = if diff.abs() > 0.2 {
+                    let hint = if diff > 0.0 {
+                        "momentum accelerating"
+                    } else {
+                        "momentum decelerating"
+                    };
+                    format!(" | Divergence={:+.3} → {}", diff, hint)
+                } else {
+                    String::new()
+                };
+                result.push_str(&format!(
+                    "🌀 **LaguerreRSI Dual-Gamma (#8)**: Fast (γ=0.3)={:.3} {} | Slow (γ=0.6)={:.3} {}{}\n",
+                    fast, fast_label, slow, slow_label, divergence_str
+                ));
+            }
+            (Some(slow), None) => {
+                let label = if slow > 0.8 {
+                    "🔴 Overbought"
+                } else if slow < 0.2 {
+                    "🟢 Oversold"
+                } else {
+                    "⚪ Neutral"
+                };
+                result.push_str(&format!(
+                    "🌀 **LaguerreRSI Dual-Gamma (#8)**: Fast (γ=0.3)=N/A | Slow (γ=0.6)={:.3} {}\n",
+                    slow, label
+                ));
+            }
+            (None, Some(fast)) => {
+                let label = if fast > 0.8 {
+                    "🔴 Overbought"
+                } else if fast < 0.2 {
+                    "🟢 Oversold"
+                } else {
+                    "⚪ Neutral"
+                };
+                result.push_str(&format!(
+                    "🌀 **LaguerreRSI Dual-Gamma (#8)**: Fast (γ=0.3)={:.3} {} | Slow (γ=0.6)=N/A\n",
+                    fast, label
+                ));
+            }
+            (None, None) => {}
+        }
+
+        // SuperSmoother slope (#9)
         if analysis.super_smoother20.len() >= 2 {
             let curr = analysis.super_smoother20.last().and_then(|v| *v);
             let prev = analysis
@@ -150,13 +214,13 @@ impl TechnicalAnalysisPlugin {
                 let slope = if p > 0.0 { (c - p) / p * 100.0 } else { 0.0 };
                 let arrow = if slope > 0.0 { "📈" } else { "📉" };
                 result.push_str(&format!(
-                    "{} **SuperSmoother(20)**: ${:.2} (slope: {:+.4}%)\n",
+                    "{} **SuperSmoother(20) (#9)**: ${:.2} (slope: {:+.4}%)\n",
                     arrow, c, slope
                 ));
             }
         }
 
-        // Hurst Exponent
+        // Hurst Exponent (#10)
         if let Some(Some(h)) = analysis.hurst.last() {
             let regime_str = if *h > 0.55 {
                 "📈 Trending → use trend-following"
@@ -166,7 +230,7 @@ impl TechnicalAnalysisPlugin {
                 "⚠️ Random Walk → caution advised"
             };
             result.push_str(&format!(
-                "\n🧬 **Hurst(100)**: {:.3} — {}\n",
+                "🧬 **Hurst(100) (#10)**: {:.3} — {}\n",
                 h, regime_str
             ));
 
@@ -174,7 +238,11 @@ impl TechnicalAnalysisPlugin {
             if let Some(Some(h_short)) = analysis.hurst_short.last() {
                 let divergence = (h - h_short).abs();
                 if divergence > 0.15 {
-                    let direction = if h_short > h { "emerging trend" } else { "fading trend" };
+                    let direction = if h_short > h {
+                        "emerging trend"
+                    } else {
+                        "fading trend"
+                    };
                     result.push_str(&format!(
                         "    ⚡ **Hurst Divergence**: short={:.3} vs long={:.3} (Δ={:.3}) → regime transition likely ({})\n",
                         h_short, h, divergence, direction
@@ -187,10 +255,10 @@ impl TechnicalAnalysisPlugin {
                 }
             }
         } else {
-            result.push_str("\n🧬 **Hurst(100)**: ⏳ Need 100+ candles\n");
+            result.push_str("🧬 **Hurst(100) (#10)**: ⏳ Need 100+ candles\n");
         }
 
-        // CMO
+        // CMO (#11)
         if let Some(Some(cmo)) = analysis.cmo14.last() {
             let label = if *cmo > 50.0 {
                 "🔴 Overbought"
@@ -203,47 +271,7 @@ impl TechnicalAnalysisPlugin {
             } else {
                 "⚪ Neutral"
             };
-            result.push_str(&format!("⚡ **CMO(14)**: {:.1} {}\n", cmo, label));
-        }
-
-        // Laguerre RSI (dual gamma — QW3)
-        if let Some(Some(lrsi)) = analysis.laguerre_rsi.last() {
-            let label = if *lrsi > 0.8 {
-                "🔴 Overbought"
-            } else if *lrsi < 0.2 {
-                "🟢 Oversold"
-            } else {
-                "⚪ Neutral"
-            };
-            result.push_str(&format!(
-                "🌀 **LaguerreRSI(γ=0.8)**: {:.3} {}\n",
-                lrsi, label
-            ));
-        }
-        // QW3: Fast LaguerreRSI (gamma=0.5) — more responsive, avoids flat-line at 1.0
-        if let Some(Some(lrsi_fast)) = analysis.laguerre_rsi_fast.last() {
-            let label = if *lrsi_fast > 0.8 {
-                "🔴 Overbought"
-            } else if *lrsi_fast < 0.2 {
-                "🟢 Oversold"
-            } else {
-                "⚪ Neutral"
-            };
-            result.push_str(&format!(
-                "🌀 **LaguerreRSI(γ=0.5)**: {:.3} {} (responsive)\n",
-                lrsi_fast, label
-            ));
-            // Show divergence between fast and slow
-            if let Some(Some(lrsi_slow)) = analysis.laguerre_rsi.last() {
-                let diff = lrsi_fast - lrsi_slow;
-                if diff.abs() > 0.2 {
-                    let hint = if diff > 0.0 { "momentum accelerating" } else { "momentum decelerating" };
-                    result.push_str(&format!(
-                        "    ⚡ **LaguerreRSI Divergence**: fast-slow={:+.3} → {}\n",
-                        diff, hint
-                    ));
-                }
-            }
+            result.push_str(&format!("⚡ **CMO(14) (#11)**: {:.1} {}\n", cmo, label));
         }
 
         if let Some(p) = closes.last() {
@@ -376,16 +404,28 @@ impl TechnicalAnalysisPlugin {
         };
 
         let desc = match regime {
-            bonbo_ta::models::MarketRegime::TrendingUp => "📈 Uptrend — use trend-following (ALMA crossover, SuperSmoother slope)",
-            bonbo_ta::models::MarketRegime::TrendingDown => "📉 Downtrend — consider shorts or exit longs",
-            bonbo_ta::models::MarketRegime::Ranging => "↔️ Sideways — use mean-reversion (BB bounce, RSI extreme)",
-            bonbo_ta::models::MarketRegime::Volatile => "⚡ High volatility — use wider stops, reduce position size",
-            bonbo_ta::models::MarketRegime::Quiet => "🔇 Low volatility — breakout incoming, prepare entry",
+            bonbo_ta::models::MarketRegime::TrendingUp => {
+                "📈 Uptrend — use trend-following (ALMA crossover, SuperSmoother slope)"
+            }
+            bonbo_ta::models::MarketRegime::TrendingDown => {
+                "📉 Downtrend — consider shorts or exit longs"
+            }
+            bonbo_ta::models::MarketRegime::Ranging => {
+                "↔️ Sideways — use mean-reversion (BB bounce, RSI extreme)"
+            }
+            bonbo_ta::models::MarketRegime::Volatile => {
+                "⚡ High volatility — use wider stops, reduce position size"
+            }
+            bonbo_ta::models::MarketRegime::Quiet => {
+                "🔇 Low volatility — breakout incoming, prepare entry"
+            }
         };
 
         // Strategy recommendation based on windowed Hurst (consistent with analyze_indicators)
         let strategy = match hurst_val {
-            Some(h) if h > 0.55 => "→ Strategy: Ehlers Trend Following (SuperSmoother + ALMA crossover)",
+            Some(h) if h > 0.55 => {
+                "→ Strategy: Ehlers Trend Following (SuperSmoother + ALMA crossover)"
+            }
             Some(h) if h < 0.45 => "→ Strategy: Mean Reversion (BB + RSI extreme + Hurst filter)",
             Some(_) => "→ Strategy: AVOID or reduce size (random walk market)",
             None => "→ Strategy: Insufficient data for Hurst, use standard approach",
@@ -592,7 +632,10 @@ impl ToolPlugin for TechnicalAnalysisPlugin {
 
 /// QW1: Compute ATR from candle data using Wilder's smoothing.
 /// Returns None if not enough candles.
-fn compute_atr_from_candles(candles: &[bonbo_ta::models::OhlcvCandle], period: usize) -> Option<f64> {
+fn compute_atr_from_candles(
+    candles: &[bonbo_ta::models::OhlcvCandle],
+    period: usize,
+) -> Option<f64> {
     if candles.len() < period + 1 {
         return None;
     }

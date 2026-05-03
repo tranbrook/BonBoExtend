@@ -298,14 +298,20 @@ mod tests {
         let mut classifier = RegimeClassifier::new(config);
 
         // Random-ish data → Hurst near 0.5
-        let returns: Vec<f64> = (0..120).map(|i| ((i * 17 + 37) % 97) as f64 / 97.0 - 0.5).collect();
+        let returns: Vec<f64> = (0..120)
+            .map(|i| ((i * 17 + 37) % 97) as f64 / 97.0 - 0.5)
+            .collect();
         for chunk in returns.chunks(1) {
             classifier.detect(chunk, 0);
         }
 
         if let Some(h) = classifier.hurst() {
             // Should be somewhat near 0.5 for pseudo-random data
-            assert!(h > 0.1 && h < 0.9, "Hurst {} should be in reasonable range for random data", h);
+            assert!(
+                h > 0.1 && h < 0.9,
+                "Hurst {} should be in reasonable range for random data",
+                h
+            );
         }
     }
 
@@ -345,7 +351,10 @@ mod tests {
         // Feed enough data in bulk to trigger Hurst computation
         let returns: Vec<f64> = (0..120).map(|_| 0.01).collect();
         classifier.detect(&returns, 1000);
-        assert!(classifier.hurst().is_some(), "Hurst should be computed after 120 data points");
+        assert!(
+            classifier.hurst().is_some(),
+            "Hurst should be computed after 120 data points"
+        );
 
         classifier.reset();
         assert!(classifier.hurst().is_none());

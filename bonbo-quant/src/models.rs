@@ -78,6 +78,10 @@ pub struct BacktestConfig {
     pub default_stop_loss: f64,
     /// Default take profit percentage (0.10 = 10%).
     pub default_take_profit: f64,
+    /// Strict MTF mode: only emit signals when higher-timeframe bar is complete.
+    /// Prevents look-ahead bias in multi-timeframe strategies.
+    /// Default: true. Set to false for legacy comparison.
+    pub strict_mtf: bool,
 }
 
 impl Default for BacktestConfig {
@@ -91,6 +95,7 @@ impl Default for BacktestConfig {
             end_time: 0,
             default_stop_loss: 0.05,
             default_take_profit: 0.10,
+            strict_mtf: true,
         }
     }
 }

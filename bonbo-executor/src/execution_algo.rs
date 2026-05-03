@@ -10,7 +10,7 @@
 //! allowing dry-run testing without hitting Binance.
 
 use crate::orderbook::{OrderBookSnapshot, Side};
-use crate::risk_guards::{ExecutionRiskLimits, PreTradeCheck, CumulativeRiskState};
+use crate::risk_guards::{CumulativeRiskState, ExecutionRiskLimits, PreTradeCheck};
 use crate::utils::decimal_to_f64;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -137,10 +137,7 @@ impl ExecutionReport {
             fills.iter().map(|f| f.slippage_bps).sum::<f64>() / fills.len() as f64
         };
 
-        let max_slippage_bps = fills
-            .iter()
-            .map(|f| f.slippage_bps)
-            .fold(0.0f64, f64::max);
+        let max_slippage_bps = fills.iter().map(|f| f.slippage_bps).fold(0.0f64, f64::max);
 
         let total_commission: Decimal = fills.iter().map(|f| f.commission).sum();
 
@@ -268,16 +265,18 @@ pub async fn execute_twap(
             Side::Sell => book.estimate_sell_slippage(slice_qty),
         };
 
-        if let Some(ref est) = slippage_est {
-            if est.slippage_bps > config.max_slippage_per_slice {
-                tracing::warn!(
-                    "TWAP slice {}: estimated slippage {:.1} bps > max {:.1} bps — pausing",
-                    i, est.slippage_bps, config.max_slippage_per_slice
-                );
-                tokio::time::sleep(config.interval).await;
-                // Retry once
-                continue;
-            }
+        if let Some(ref est) = slippage_est
+            && est.slippage_bps > config.max_slippage_per_slice
+        {
+            tracing::warn!(
+                "TWAP slice {}: estimated slippage {:.1} bps > max {:.1} bps — pausing",
+                i,
+                est.slippage_bps,
+                config.max_slippage_per_slice
+            );
+            tokio::time::sleep(config.interval).await;
+            // Retry once
+            continue;
         }
 
         let this_qty = slice_qty.min(remaining);
@@ -379,7 +378,9 @@ pub async fn execute_adaptive_limit(
     let limit_price = compute_limit_price(&book, side, config.offset_bps);
 
     // Step 2: Place limit order
-    let limit_result = placer.place_limit(symbol, side, total_qty, limit_price).await;
+    let limit_result = placer
+        .place_limit(symbol, side, total_qty, limit_price)
+        .await;
 
     match limit_result {
         Ok(fill) => {
@@ -400,14 +401,14 @@ pub async fn execute_adaptive_limit(
                 Side::Sell => fresh_book.estimate_sell_slippage(total_qty),
             };
 
-            if let Some(ref est) = slippage_est {
-                if est.slippage_bps > config.max_sweep_slippage_bps {
-                    anyhow::bail!(
-                        "Sweep slippage {:.1} bps exceeds max {:.1} bps — aborting",
-                        est.slippage_bps,
-                        config.max_sweep_slippage_bps
-                    );
-                }
+            if let Some(ref est) = slippage_est
+                && est.slippage_bps > config.max_sweep_slippage_bps
+            {
+                anyhow::bail!(
+                    "Sweep slippage {:.1} bps exceeds max {:.1} bps — aborting",
+                    est.slippage_bps,
+                    config.max_sweep_slippage_bps
+                );
             }
 
             let market_fill = placer.place_market(symbol, side, total_qty).await?;
@@ -526,7 +527,9 @@ pub fn select_execution_algo(
             fill_probability: 0.98,
             rationale: format!(
                 "Order ${:.0} = {:.3}% of 24h vol — TWAP {} slices reduces impact",
-                order_notional_usd, participation * 100.0, slices
+                order_notional_usd,
+                participation * 100.0,
+                slices
             ),
         };
     }
@@ -542,7 +545,9 @@ pub fn select_execution_algo(
             fill_probability: 0.95,
             rationale: format!(
                 "Order ${:.0} = {:.2}% of 24h vol — aggressive TWAP {} slices",
-                order_notional_usd, participation * 100.0, slices
+                order_notional_usd,
+                participation * 100.0,
+                slices
             ),
         };
     }
@@ -556,7 +561,8 @@ pub fn select_execution_algo(
         fill_probability: 0.90,
         rationale: format!(
             "LARGE ORDER ${:.0} = {:.1}% of 24h vol — iceberg to hide true size",
-            order_notional_usd, participation * 100.0
+            order_notional_usd,
+            participation * 100.0
         ),
     }
 }
@@ -638,10 +644,7 @@ mod tests {
         assert_eq!(report.filled_qty, Decimal::from(1000));
         assert_eq!(report.fill_rate, 1.0);
         // VWAP = (500*0.06052 + 500*0.06055) / 1000 = 0.060535
-        assert_eq!(
-            report.vwap,
-            Decimal::from_str("0.060535").unwrap()
-        );
+        assert_eq!(report.vwap, Decimal::from_str("0.060535").unwrap());
         assert!(report.is_bps > 0.0);
     }
 

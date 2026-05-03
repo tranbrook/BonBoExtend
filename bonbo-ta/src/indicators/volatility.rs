@@ -18,6 +18,10 @@ pub struct BollingerBandsResult {
 /// Bollinger Bands (SMA ± k*StdDev).
 ///
 /// Standard: period=20, k=2.0.
+///
+/// Uses Welford's online algorithm for numerically stable variance computation,
+/// avoiding catastrophic cancellation that can occur with the naive
+/// `E[X²] - (E[X])²` approach for large price values.
 pub struct BollingerBands {
     period: usize,
     multiplier: f64,
@@ -25,7 +29,9 @@ pub struct BollingerBands {
     index: usize,
     filled: bool,
     sum: f64,
-    sum_sq: f64,
+    /// Welford's M2 accumulator — tracks running variance without
+    /// accumulating x² which causes precision loss for large values.
+    welford_m2: f64,
 }
 
 impl BollingerBands {
@@ -40,7 +46,7 @@ impl BollingerBands {
             index: 0,
             filled: false,
             sum: 0.0,
-            sum_sq: 0.0,
+            welford_m2: 0.0,
         })
     }
 
@@ -58,9 +64,26 @@ impl IncrementalIndicator for BollingerBands {
         let old = self.buffer[self.index];
         self.buffer[self.index] = input;
 
-        // Update running sums using Welford-like approach
+        // Update running sum and Welford M2 using the sliding-window variant.
+        // When removing `old` and adding `input`, the delta from mean changes,
+        // so we track M2 = Σ(x_i - mean)² incrementally.
+        let n = self.period as f64;
+
+        // Compute current mean before update
+        let old_mean = self.sum / n;
+
+        // Update sum
         self.sum = self.sum - old + input;
-        self.sum_sq = self.sum_sq - old * old + input * input;
+
+        // Compute new mean after update
+        let new_mean = self.sum / n;
+
+        // Update Welford M2: remove old element's contribution, add new element's.
+        // M2 = M2 - (old - old_mean)*(old - new_mean) + (input - old_mean)*(input - new_mean)
+        // This is the West (1979) updating formula for sliding windows, which avoids
+        // the catastrophic cancellation of E[X²] - (E[X])² for large values.
+        self.welford_m2 = self.welford_m2 - (old - old_mean) * (old - new_mean)
+            + (input - old_mean) * (input - new_mean);
 
         self.index = (self.index + 1) % self.period;
         if !self.filled && self.index == 0 {
@@ -73,18 +96,13 @@ impl IncrementalIndicator for BollingerBands {
 
         // Sample variance (Bessel's correction: divide by n-1).
         // TradingView, TA-Lib, and all major platforms use sample variance for BB.
-        // Population variance (n) underestimates std by ~5% for typical BB(20).
-        let n = self.period as f64;
-        let mean = self.sum / n;
-        // E[X²] - (E[X])² gives population variance; multiply by n/(n-1) for sample.
-        let pop_variance = (self.sum_sq / n) - (mean * mean);
-        let variance = pop_variance * (n / (n - 1.0));
-        let std_dev = variance.sqrt().max(0.0);
+        let variance = (self.welford_m2 / (n - 1.0)).max(0.0);
+        let std_dev = variance.sqrt();
 
-        let upper = mean + self.multiplier * std_dev;
-        let lower = mean - self.multiplier * std_dev;
-        let bandwidth = if mean.abs() > f64::EPSILON {
-            (upper - lower) / mean
+        let upper = new_mean + self.multiplier * std_dev;
+        let lower = new_mean - self.multiplier * std_dev;
+        let bandwidth = if new_mean.abs() > f64::EPSILON {
+            (upper - lower) / new_mean
         } else {
             0.0
         };
@@ -96,7 +114,7 @@ impl IncrementalIndicator for BollingerBands {
 
         let result = BollingerBandsResult {
             upper,
-            middle: mean,
+            middle: new_mean,
             lower,
             bandwidth,
             percent_b: percent_b.clamp(0.0, 1.0),
@@ -115,7 +133,7 @@ impl IncrementalIndicator for BollingerBands {
         self.index = 0;
         self.filled = false;
         self.sum = 0.0;
-        self.sum_sq = 0.0;
+        self.welford_m2 = 0.0;
     }
 
     fn is_ready(&self) -> bool {

@@ -387,6 +387,7 @@ pub struct PovReport {
 /// 5. Waits sample_interval, repeats
 ///
 /// Stops when: total_qty filled, or max_execution_time exceeded, or abort condition.
+#[allow(clippy::too_many_arguments)]
 pub async fn execute_pov(
     placer: &dyn OrderPlacer,
     trade_fetcher: &dyn TradeFetcher,
@@ -394,7 +395,8 @@ pub async fn execute_pov(
     side: Side,
     total_qty: Decimal,
     config: &PovConfig,
-    _impact_params: &ImpactParams,    risk_state: &CumulativeRiskState,
+    _impact_params: &ImpactParams,
+    risk_state: &CumulativeRiskState,
     risk_limits: &ExecutionRiskLimits,
 ) -> anyhow::Result<PovReport> {
     let start_wall = Instant::now();
@@ -409,7 +411,12 @@ pub async fn execute_pov(
     let arrival_price_f64 = decimal_to_f64(arrival_price);
 
     let pre_check = PreTradeCheck::run(
-        symbol, side, total_qty, arrival_price, risk_state, risk_limits,
+        symbol,
+        side,
+        total_qty,
+        arrival_price,
+        risk_state,
+        risk_limits,
     );
     if !pre_check.allowed {
         anyhow::bail!("POV pre-trade check failed: {:?}", pre_check.reason);
@@ -417,9 +424,12 @@ pub async fn execute_pov(
 
     tracing::info!(
         "📊 POV START: {} {:?} {} | participation={:.0}% | window={}s | interval={}s",
-        symbol, side, total_qty,
+        symbol,
+        side,
+        total_qty,
         config.participation_rate * 100.0,
-        config.volume_window_secs, config.sample_interval_secs,
+        config.volume_window_secs,
+        config.sample_interval_secs,
     );
 
     // ── Phase 2: Initialize state ────────────────────────────
@@ -433,7 +443,8 @@ pub async fn execute_pov(
     let mut empty_samples = 0usize;
     let mut rate_measurements: Vec<f64> = Vec::new();
     let mut rng = SimpleRng::from_seed(start_epoch_ms as u64);
-    let mut last_order_time = Instant::now() - Duration::from_secs(config.min_order_interval_secs + 1);
+    let mut last_order_time =
+        Instant::now() - Duration::from_secs(config.min_order_interval_secs + 1);
 
     // ── Phase 3: Main execution loop ─────────────────────────
     loop {
@@ -445,10 +456,12 @@ pub async fn execute_pov(
             break;
         }
 
-        if config.max_execution_time_secs > 0
-            && elapsed_ms > config.max_execution_time_secs * 1000
+        if config.max_execution_time_secs > 0 && elapsed_ms > config.max_execution_time_secs * 1000
         {
-            tracing::warn!("⏰ POV: max execution time reached ({}s)", config.max_execution_time_secs);
+            tracing::warn!(
+                "⏰ POV: max execution time reached ({}s)",
+                config.max_execution_time_secs
+            );
             break;
         }
 
@@ -510,10 +523,15 @@ pub async fn execute_pov(
 
         // Detect burst (>2× rolling average)
         if !rate_measurements.is_empty() {
-            let avg_rate: f64 = rate_measurements.iter().sum::<f64>() / rate_measurements.len() as f64;
+            let avg_rate: f64 =
+                rate_measurements.iter().sum::<f64>() / rate_measurements.len() as f64;
             if rate > avg_rate * 2.0 {
                 burst_samples += 1;
-                tracing::debug!("POV: burst detected, rate={:.1}/s vs avg={:.1}/s", rate, avg_rate);
+                tracing::debug!(
+                    "POV: burst detected, rate={:.1}/s vs avg={:.1}/s",
+                    rate,
+                    avg_rate
+                );
             }
         }
 
@@ -537,6 +555,7 @@ pub async fn execute_pov(
 
         // ── Pre-slice checks ─────────────────────────────────
         let mut retries = 0usize;
+        #[allow(unused_assignments)]
         let mut status = "SCHEDULED".to_string();
 
         loop {
@@ -574,7 +593,12 @@ pub async fn execute_pov(
                     status = format!("SPREAD_TIMEOUT: {:.1}bps", current_spread_bps);
                     break;
                 }
-                tracing::warn!("⏸ POV: spread {:.1}bps, retry {}/{}", current_spread_bps, retries, config.max_retries);
+                tracing::warn!(
+                    "⏸ POV: spread {:.1}bps, retry {}/{}",
+                    current_spread_bps,
+                    retries,
+                    config.max_retries
+                );
                 tokio::time::sleep(Duration::from_secs(5)).await;
                 continue;
             }
@@ -592,7 +616,11 @@ pub async fn execute_pov(
                     status = format!("SLIPPAGE_TIMEOUT: {:.1}bps", est_slip);
                     break;
                 }
-                tracing::warn!("⏸ POV: slippage est {:.1}bps > max {:.1}bps", est_slip, config.max_slippage_bps);
+                tracing::warn!(
+                    "⏸ POV: slippage est {:.1}bps > max {:.1}bps",
+                    est_slip,
+                    config.max_slippage_bps
+                );
                 tokio::time::sleep(Duration::from_secs(3)).await;
                 continue;
             }
@@ -630,12 +658,17 @@ pub async fn execute_pov(
         let book = placer.get_orderbook(symbol).await?;
         let current_spread_bps = book.spread_bps().unwrap_or(config.normal_spread_bps);
 
-        let (fill, order_type) = if config.limit_first_when_tight && current_spread_bps < config.tight_spread_bps {
+        let (fill, order_type) = if config.limit_first_when_tight
+            && current_spread_bps < config.tight_spread_bps
+        {
             let limit_price = match side {
                 Side::Buy => book.best_bid().unwrap_or(arrival_price),
                 Side::Sell => book.best_ask().unwrap_or(arrival_price),
             };
-            match placer.place_limit(symbol, side, slice_qty, limit_price).await {
+            match placer
+                .place_limit(symbol, side, slice_qty, limit_price)
+                .await
+            {
                 Ok(f) => (f, "LIMIT".to_string()),
                 Err(_) => {
                     tokio::time::sleep(Duration::from_secs(5)).await;
@@ -644,7 +677,8 @@ pub async fn execute_pov(
                         Err(e) => {
                             tracing::warn!("POV: order failed: {}", e);
                             slice_index += 1;
-                            tokio::time::sleep(Duration::from_secs(config.sample_interval_secs)).await;
+                            tokio::time::sleep(Duration::from_secs(config.sample_interval_secs))
+                                .await;
                             continue;
                         }
                     }
@@ -699,11 +733,17 @@ pub async fn execute_pov(
 
     // ── Phase 4: Build report ────────────────────────────────
     let base_report = ExecutionReport::build(
-        symbol, side, "POV", total_qty, arrival_price, fills, start_wall,
+        symbol,
+        side,
+        "POV",
+        total_qty,
+        arrival_price,
+        fills,
+        start_wall,
     );
 
-    let total_market_volume: f64 = rate_measurements.iter().sum::<f64>()
-        * (start_wall.elapsed().as_secs_f64());
+    let total_market_volume: f64 =
+        rate_measurements.iter().sum::<f64>() * (start_wall.elapsed().as_secs_f64());
     let executed_notional = decimal_to_f64(arrival_price * (total_qty - remaining));
     let actual_participation = if total_market_volume > 0.0 {
         executed_notional / total_market_volume
@@ -749,8 +789,6 @@ pub async fn execute_pov(
 
 use crate::utils::compute_jitter;
 
-
-
 /// Compute correlation between our fill sizes and market volume rates.
 fn compute_volume_correlation(records: &[PovSliceRecord]) -> f64 {
     let filled: Vec<PovSliceRecord> = records
@@ -763,14 +801,19 @@ fn compute_volume_correlation(records: &[PovSliceRecord]) -> f64 {
         return 1.0;
     }
 
-    let qtys: Vec<f64> = filled.iter().map(|r| decimal_to_f64(r.filled_qty)).collect();
+    let qtys: Vec<f64> = filled
+        .iter()
+        .map(|r| decimal_to_f64(r.filled_qty))
+        .collect();
     let rates: Vec<f64> = filled.iter().map(|r| r.market_rate_usd_per_sec).collect();
 
     let n = qtys.len() as f64;
     let mean_q: f64 = qtys.iter().sum::<f64>() / n;
     let mean_r: f64 = rates.iter().sum::<f64>() / n;
 
-    let cov: f64 = qtys.iter().zip(rates.iter())
+    let cov: f64 = qtys
+        .iter()
+        .zip(rates.iter())
         .map(|(q, r)| (q - mean_q) * (r - mean_r))
         .sum();
     let var_q: f64 = qtys.iter().map(|q| (q - mean_q).powi(2)).sum();
@@ -795,7 +838,15 @@ mod tests {
 
     #[test]
     fn test_agg_trade_from_json() {
-        let v = serde_json::json!([12345, "0.06050", "500", "500", 100, 1700000000000_i64, false]);
+        let v = serde_json::json!([
+            12345,
+            "0.06050",
+            "500",
+            "500",
+            100,
+            1700000000000_i64,
+            false
+        ]);
         let trade = AggTrade::from_json(&v).expect("parse aggTrade");
         assert_eq!(trade.id, 12345);
         assert!((trade.price - 0.06050).abs() < 0.0001);
@@ -819,12 +870,18 @@ mod tests {
         assert_eq!(win.trade_count(), 0);
 
         win.push(AggTrade {
-            id: 1, price: 100.0, qty: 10.0,
-            timestamp_ms: 1000000, is_buyer_maker: false,
+            id: 1,
+            price: 100.0,
+            qty: 10.0,
+            timestamp_ms: 1000000,
+            is_buyer_maker: false,
         });
         win.push(AggTrade {
-            id: 2, price: 101.0, qty: 20.0,
-            timestamp_ms: 1001000, is_buyer_maker: true,
+            id: 2,
+            price: 101.0,
+            qty: 20.0,
+            timestamp_ms: 1001000,
+            is_buyer_maker: true,
         });
 
         assert_eq!(win.trade_count(), 2);
@@ -841,8 +898,11 @@ mod tests {
 
         // Trade at t=0
         win.push(AggTrade {
-            id: 1, price: 100.0, qty: 10.0,
-            timestamp_ms: 0, is_buyer_maker: false,
+            id: 1,
+            price: 100.0,
+            qty: 10.0,
+            timestamp_ms: 0,
+            is_buyer_maker: false,
         });
         assert_eq!(win.trade_count(), 1);
 
@@ -856,9 +916,27 @@ mod tests {
     fn test_volume_window_partial_expiry() {
         let mut win = VolumeWindow::new(10.0);
 
-        win.push(AggTrade { id: 1, price: 100.0, qty: 10.0, timestamp_ms: 0, is_buyer_maker: false });
-        win.push(AggTrade { id: 2, price: 100.0, qty: 20.0, timestamp_ms: 5000, is_buyer_maker: false });
-        win.push(AggTrade { id: 3, price: 100.0, qty: 30.0, timestamp_ms: 8000, is_buyer_maker: false });
+        win.push(AggTrade {
+            id: 1,
+            price: 100.0,
+            qty: 10.0,
+            timestamp_ms: 0,
+            is_buyer_maker: false,
+        });
+        win.push(AggTrade {
+            id: 2,
+            price: 100.0,
+            qty: 20.0,
+            timestamp_ms: 5000,
+            is_buyer_maker: false,
+        });
+        win.push(AggTrade {
+            id: 3,
+            price: 100.0,
+            qty: 30.0,
+            timestamp_ms: 8000,
+            is_buyer_maker: false,
+        });
 
         // At t=11s: trade 1 expires (0 < 11000-10000=1000), trade 2+3 survive
         win.expire_before(11000);
@@ -873,13 +951,19 @@ mod tests {
         // Fill window with $6000 over 60s = $100/s
         for i in 0..60 {
             win.push(AggTrade {
-                id: i, price: 100.0, qty: 1.0,
-                timestamp_ms: i * 1000, is_buyer_maker: false,
+                id: i,
+                price: 100.0,
+                qty: 1.0,
+                timestamp_ms: i * 1000,
+                is_buyer_maker: false,
             });
         }
 
         let rate = win.rate_usd_per_sec();
-        assert!((rate - 100.0).abs() < 1.0, "rate should be ~100/s, got {rate}");
+        assert!(
+            (rate - 100.0).abs() < 1.0,
+            "rate should be ~100/s, got {rate}"
+        );
     }
 
     // ── Config tests ─────────────────────────────────────────
@@ -975,25 +1059,44 @@ mod tests {
     fn test_volume_correlation_inverse() {
         let records = vec![
             PovSliceRecord {
-                index: 0, market_rate_usd_per_sec: 1000.0, filled_qty: Decimal::from(10),
-                planned_qty: Decimal::ZERO, window_trade_count: 10,
-                fill_price: Decimal::ONE, commission: Decimal::ZERO,
-                is_maker: false, slippage_bps: 0.0, spread_bps: 2.0,
-                order_type: "MARKET".into(), status: "FILLED".into(),
-                elapsed_ms: 0, retries: 0,
+                index: 0,
+                market_rate_usd_per_sec: 1000.0,
+                filled_qty: Decimal::from(10),
+                planned_qty: Decimal::ZERO,
+                window_trade_count: 10,
+                fill_price: Decimal::ONE,
+                commission: Decimal::ZERO,
+                is_maker: false,
+                slippage_bps: 0.0,
+                spread_bps: 2.0,
+                order_type: "MARKET".into(),
+                status: "FILLED".into(),
+                elapsed_ms: 0,
+                retries: 0,
             },
             PovSliceRecord {
-                index: 1, market_rate_usd_per_sec: 10.0, filled_qty: Decimal::from(1000),
-                planned_qty: Decimal::ZERO, window_trade_count: 10,
-                fill_price: Decimal::ONE, commission: Decimal::ZERO,
-                is_maker: false, slippage_bps: 0.0, spread_bps: 2.0,
-                order_type: "MARKET".into(), status: "FILLED".into(),
-                elapsed_ms: 5000, retries: 0,
+                index: 1,
+                market_rate_usd_per_sec: 10.0,
+                filled_qty: Decimal::from(1000),
+                planned_qty: Decimal::ZERO,
+                window_trade_count: 10,
+                fill_price: Decimal::ONE,
+                commission: Decimal::ZERO,
+                is_maker: false,
+                slippage_bps: 0.0,
+                spread_bps: 2.0,
+                order_type: "MARKET".into(),
+                status: "FILLED".into(),
+                elapsed_ms: 5000,
+                retries: 0,
             },
         ];
 
         let corr = compute_volume_correlation(&records);
-        assert!(corr < 0.0, "inverse correlation should be negative, got {corr}");
+        assert!(
+            corr < 0.0,
+            "inverse correlation should be negative, got {corr}"
+        );
     }
 
     // ── Serialization ────────────────────────────────────────
@@ -1002,8 +1105,11 @@ mod tests {
     fn test_pov_report_serialization() {
         // Build a minimal ExecutionReport for testing
         let base = ExecutionReport::build(
-            "TEST", crate::orderbook::Side::Buy, "POV",
-            Decimal::from(100), Decimal::ONE,
+            "TEST",
+            crate::orderbook::Side::Buy,
+            "POV",
+            Decimal::from(100),
+            Decimal::ONE,
             vec![],
             Instant::now(),
         );
@@ -1030,7 +1136,13 @@ mod tests {
     #[test]
     fn test_volume_window_serialization() {
         let mut win = VolumeWindow::new(60.0);
-        win.push(AggTrade { id: 1, price: 0.0605, qty: 500.0, timestamp_ms: 1000, is_buyer_maker: false });
+        win.push(AggTrade {
+            id: 1,
+            price: 0.0605,
+            qty: 500.0,
+            timestamp_ms: 1000,
+            is_buyer_maker: false,
+        });
 
         let json = serde_json::to_string(&win).unwrap();
         let back: VolumeWindow = serde_json::from_str(&json).unwrap();

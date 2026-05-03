@@ -11,7 +11,7 @@
 //! Quick Wins (v0.2):
 //! - ATR-based stop loss computation (regime-adaptive)
 //! - Hurst divergence detection (short-window vs long-window)
-//! - Dual LaguerreRSI (gamma=0.5 fast + gamma=0.8 slow)
+//! - Dual LaguerreRSI (gamma=0.3 fast + gamma=0.6 slow, crypto-optimized)
 
 use crate::IncrementalIndicator;
 use crate::indicators::*;
@@ -46,10 +46,13 @@ pub struct FullAnalysis {
     pub hurst_short: Vec<Option<f64>>,
     /// CMO(14) — Chande Momentum Oscillator
     pub cmo14: Vec<Option<f64>>,
-    /// Laguerre RSI (gamma=0.8) — Ehlers adaptive oscillator (slow/smooth)
+    /// Laguerre RSI (gamma=0.6) — Ehlers adaptive oscillator (slow/smooth, crypto-optimized)
     pub laguerre_rsi: Vec<Option<f64>>,
-    /// Laguerre RSI (gamma=0.5) — responsive version (fast), avoids flat-lining at 1.0
+    /// Laguerre RSI (gamma=0.3) — responsive version (fast), avoids flat-lining at 0/1
     pub laguerre_rsi_fast: Vec<Option<f64>>,
+    /// Laguerre RSI divergence: fast(0.3) - slow(0.6).
+    /// Positive → momentum accelerating (bullish), Negative → decelerating (bearish).
+    pub laguerre_divergence: Vec<Option<f64>>,
 }
 
 /// Compute all indicators (traditional + Financial-Hacker) over a slice of close prices.
@@ -57,22 +60,22 @@ pub fn compute_full_analysis(closes: &[f64]) -> FullAnalysis {
     let n = closes.len();
 
     // Traditional indicators
-    let mut sma20_ind = Sma::new(20).unwrap();
-    let mut ema12_ind = Ema::new(12).unwrap();
-    let mut ema26_ind = Ema::new(26).unwrap();
-    let mut rsi14_ind = Rsi::new(14).unwrap();
+    let mut sma20_ind = Sma::new(20).expect("SMA period must be > 0");
+    let mut ema12_ind = Ema::new(12).expect("EMA period must be > 0");
+    let mut ema26_ind = Ema::new(26).expect("EMA period must be > 0");
+    let mut rsi14_ind = Rsi::new(14).expect("RSI period must be > 0");
     let mut macd_ind = Macd::standard();
     let mut bb_ind = BollingerBands::standard();
 
     // Financial-Hacker indicators
-    let mut alma10_ind = Alma::default_params(10).unwrap();
-    let mut alma30_ind = Alma::default_params(30).unwrap();
-    let mut ss20_ind = SuperSmoother::new(20).unwrap();
-    let mut hurst_ind = HurstExponent::new(100).unwrap();
-    let mut hurst_short_ind = HurstExponent::new(50).unwrap(); // QW2: short-window
-    let mut cmo14_ind = Cmo::new(14).unwrap();
-    let mut laguerre_rsi_ind = LaguerreRsi::new(0.8).unwrap(); // slow/smooth (original)
-    let mut laguerre_rsi_fast_ind = LaguerreRsi::new(0.5).unwrap(); // QW3: fast/responsive
+    let mut alma10_ind = Alma::default_params(10).expect("ALMA period must be > 0");
+    let mut alma30_ind = Alma::default_params(30).expect("ALMA period must be > 0");
+    let mut ss20_ind = SuperSmoother::new(20).expect("SuperSmoother period must be > 0");
+    let mut hurst_ind = HurstExponent::new(100).expect("Hurst period must be > 0");
+    let mut hurst_short_ind = HurstExponent::new(50).expect("Hurst period must be > 0"); // QW2: short-window
+    let mut cmo14_ind = Cmo::new(14).expect("CMO period must be > 0");
+    let mut laguerre_rsi_ind = LaguerreRsi::new(0.6).expect("LaguerreRSI gamma must be (0,1)"); // slow/smooth (crypto-optimized)
+    let mut laguerre_rsi_fast_ind = LaguerreRsi::new(0.3).expect("LaguerreRSI gamma must be (0,1)"); // fast/responsive (crypto-optimized)
 
     let mut sma20 = Vec::with_capacity(n);
     let mut ema12 = Vec::with_capacity(n);
@@ -88,6 +91,7 @@ pub fn compute_full_analysis(closes: &[f64]) -> FullAnalysis {
     let mut cmo14 = Vec::with_capacity(n);
     let mut laguerre_rsi = Vec::with_capacity(n);
     let mut laguerre_rsi_fast = Vec::with_capacity(n); // QW3
+    let mut laguerre_divergence = Vec::with_capacity(n); // QW3
 
     for &c in closes {
         sma20.push(sma20_ind.next(c));
@@ -102,8 +106,15 @@ pub fn compute_full_analysis(closes: &[f64]) -> FullAnalysis {
         hurst.push(hurst_ind.next(c));
         hurst_short.push(hurst_short_ind.next(c)); // QW2
         cmo14.push(cmo14_ind.next(c));
-        laguerre_rsi.push(laguerre_rsi_ind.next(c));
-        laguerre_rsi_fast.push(laguerre_rsi_fast_ind.next(c)); // QW3
+        let lrsi_slow = laguerre_rsi_ind.next(c);
+        let lrsi_fast = laguerre_rsi_fast_ind.next(c);
+        laguerre_rsi.push(lrsi_slow);
+        laguerre_rsi_fast.push(lrsi_fast);
+        // Laguerre divergence: fast - slow
+        laguerre_divergence.push(match (lrsi_fast, lrsi_slow) {
+            (Some(f), Some(s)) => Some(f - s),
+            _ => None,
+        });
     }
 
     FullAnalysis {
@@ -113,8 +124,8 @@ pub fn compute_full_analysis(closes: &[f64]) -> FullAnalysis {
         rsi14,
         macd,
         bb,
-        atr14: vec![None; n], // needs HLC
-        adx: vec![None; n],   // needs HLC
+        atr14: vec![None; n], // use compute_full_analysis_hlc() for ATR
+        adx: vec![None; n],   // use compute_full_analysis_hlc() for ADX
         alma10,
         alma30,
         super_smoother20,
@@ -123,7 +134,40 @@ pub fn compute_full_analysis(closes: &[f64]) -> FullAnalysis {
         cmo14,
         laguerre_rsi,
         laguerre_rsi_fast,
+        laguerre_divergence,
     }
+}
+
+/// Compute all indicators including ATR(14) and ADX(14) which require HLC candle data.
+///
+/// This is the full-featured version of [`compute_full_analysis`] that also
+/// computes ATR and ADX from candle data. Use this when you have OHLCV candles
+/// available (not just close prices).
+pub fn compute_full_analysis_hlc(candles: &[OhlcvCandle]) -> FullAnalysis {
+    let n = candles.len();
+    let closes: Vec<f64> = candles.iter().map(|c| c.close).collect();
+
+    // Compute all close-price indicators
+    let mut analysis = compute_full_analysis(&closes);
+
+    // Compute ATR(14) and ADX(14) from HLC data
+    let mut atr_ind = Atr::new(14).expect("ATR period must be > 0");
+    let mut adx_ind = Adx::new(14).expect("ADX period must be > 0");
+
+    let mut atr14 = Vec::with_capacity(n);
+    let mut adx = Vec::with_capacity(n);
+
+    for candle in candles {
+        let atr_val = atr_ind.next_hlc(candle.high, candle.low, candle.close);
+        let adx_val = adx_ind.next_hlc(candle.high, candle.low, candle.close);
+        atr14.push(atr_val);
+        adx.push(adx_val);
+    }
+
+    analysis.atr14 = atr14;
+    analysis.adx = adx;
+
+    analysis
 }
 
 /// Detect market regime from candle data using Hurst Exponent.
@@ -151,40 +195,41 @@ pub fn detect_market_regime(candles: &[OhlcvCandle]) -> MarketRegime {
     let start = n.saturating_sub(101);
     let hurst_closes: Vec<f64> = closes[start..].to_vec();
     if n >= 100
-        && let Some(h) = HurstExponent::compute(&hurst_closes) {
-            // Compute volatility for additional context
-            let volatility_pct = compute_volatility_pct(candles);
+        && let Some(h) = HurstExponent::compute(&hurst_closes)
+    {
+        // Compute volatility for additional context
+        let volatility_pct = compute_volatility_pct(candles);
 
-            // Hurst-based regime with volatility override
-            if volatility_pct > 0.05 {
-                // Extremely volatile → override to Volatile regardless of Hurst
-                return MarketRegime::Volatile;
-            }
-
-            if h > 0.55 {
-                // Trending — determine direction
-                let trend = compute_simple_trend(&closes);
-                if trend > 0.01 {
-                    return MarketRegime::TrendingUp;
-                } else if trend < -0.01 {
-                    return MarketRegime::TrendingDown;
-                }
-                // Hurst says trending but direction unclear
-                return MarketRegime::TrendingUp;
-            } else if h < 0.45 {
-                // Mean-reverting → Ranging (good for mean-reversion strategies)
-                if volatility_pct < 0.01 {
-                    return MarketRegime::Quiet;
-                }
-                return MarketRegime::Ranging;
-            } else {
-                // H ≈ 0.5 — random walk, check volatility
-                if volatility_pct < 0.01 {
-                    return MarketRegime::Quiet;
-                }
-                return MarketRegime::Ranging;
-            }
+        // Hurst-based regime with volatility override
+        if volatility_pct > 0.05 {
+            // Extremely volatile → override to Volatile regardless of Hurst
+            return MarketRegime::Volatile;
         }
+
+        if h > 0.55 {
+            // Trending — determine direction
+            let trend = compute_simple_trend(&closes);
+            if trend > 0.01 {
+                return MarketRegime::TrendingUp;
+            } else if trend < -0.01 {
+                return MarketRegime::TrendingDown;
+            }
+            // Hurst says trending but direction unclear
+            return MarketRegime::TrendingUp;
+        } else if h < 0.45 {
+            // Mean-reverting → Ranging (good for mean-reversion strategies)
+            if volatility_pct < 0.01 {
+                return MarketRegime::Quiet;
+            }
+            return MarketRegime::Ranging;
+        } else {
+            // H ≈ 0.5 — random walk, check volatility
+            if volatility_pct < 0.01 {
+                return MarketRegime::Quiet;
+            }
+            return MarketRegime::Ranging;
+        }
+    }
 
     // ── Fallback: Simple trend + volatility (for short windows) ──
     let volatility_pct = compute_volatility_pct(candles);
@@ -336,10 +381,10 @@ pub fn compute_atr_stops(
 
     // Regime-adaptive multiplier
     let mult = match hurst {
-        Some(h) if h > 0.55 => 2.0,  // Trending — wider stops
-        Some(h) if h < 0.45 => 1.5,  // Mean-Reverting — tighter
-        Some(_) => 2.5,              // Random Walk — widest
-        None => 2.0,                 // Default
+        Some(h) if h > 0.55 => 2.0, // Trending — wider stops
+        Some(h) if h < 0.45 => 1.5, // Mean-Reverting — tighter
+        Some(_) => 2.5,             // Random Walk — widest
+        None => 2.0,                // Default
     };
 
     let stop_loss = price - atr * mult;
@@ -361,7 +406,11 @@ pub fn generate_signals(analysis: &FullAnalysis, _price: f64) -> Vec<Signal> {
     let now = chrono::Utc::now().timestamp();
     let market_char = classify_market_character(analysis);
     let mut signals = generate_traditional_signals(analysis, now, &market_char);
-    signals.extend(generate_financial_hacker_signals(analysis, now, &market_char));
+    signals.extend(generate_financial_hacker_signals(
+        analysis,
+        now,
+        &market_char,
+    ));
     signals
 }
 
@@ -382,7 +431,11 @@ fn classify_market_character(analysis: &FullAnalysis) -> MarketCharacter {
 
 /// Generate signals from traditional indicators: RSI, MACD, Bollinger Bands,
 /// SMA/EMA crossover, ATR, and ADX.
-fn generate_traditional_signals(analysis: &FullAnalysis, now: i64, market_char: &MarketCharacter) -> Vec<Signal> {
+fn generate_traditional_signals(
+    analysis: &FullAnalysis,
+    now: i64,
+    market_char: &MarketCharacter,
+) -> Vec<Signal> {
     let mut signals = Vec::new();
 
     // ── Step 2: Traditional indicators ──
@@ -520,7 +573,6 @@ fn generate_traditional_signals(analysis: &FullAnalysis, now: i64, market_char: 
         }
     }
 
-
     signals
 }
 
@@ -539,49 +591,55 @@ fn generate_financial_hacker_signals(
     if let (Some(alma_fast), Some(alma_slow)) = (
         analysis.alma10.last().and_then(|v| *v),
         analysis.alma30.last().and_then(|v| *v),
-    )
-        && alma_slow > 0.0 {
-            let diff_pct = (alma_fast - alma_slow) / alma_slow;
-            let (sig_type, confidence, reason) = if diff_pct > 0.005 {
-                // ALMA fast > slow by >0.5%
-                let conf = match market_char {
-                    MarketCharacter::Trending => 0.7, // Strongest in trending
-                    MarketCharacter::MeanReverting => 0.3,
-                    _ => 0.5,
-                };
-                (
-                    SignalType::Buy,
-                    conf,
-                    format!("ALMA(10) > ALMA(30) bullish cross (+{:.2}%)", diff_pct * 100.0),
-                )
-            } else if diff_pct < -0.005 {
-                let conf = match market_char {
-                    MarketCharacter::Trending => 0.7,
-                    MarketCharacter::MeanReverting => 0.3,
-                    _ => 0.5,
-                };
-                (
-                    SignalType::Sell,
-                    conf,
-                    format!("ALMA(10) < ALMA(30) bearish cross ({:.2}%)", diff_pct * 100.0),
-                )
-            } else {
-                (
-                    SignalType::Neutral,
-                    0.0,
-                    format!("ALMA neutral (diff {:.2}%)", diff_pct * 100.0),
-                )
+    ) && alma_slow > 0.0
+    {
+        let diff_pct = (alma_fast - alma_slow) / alma_slow;
+        let (sig_type, confidence, reason) = if diff_pct > 0.005 {
+            // ALMA fast > slow by >0.5%
+            let conf = match market_char {
+                MarketCharacter::Trending => 0.7, // Strongest in trending
+                MarketCharacter::MeanReverting => 0.3,
+                _ => 0.5,
             };
-            if confidence > 0.0 {
-                signals.push(Signal {
-                    signal_type: sig_type,
-                    confidence,
-                    reason,
-                    source: "ALMA(10,30)".to_string(),
-                    timestamp: now,
-                });
-            }
+            (
+                SignalType::Buy,
+                conf,
+                format!(
+                    "ALMA(10) > ALMA(30) bullish cross (+{:.2}%)",
+                    diff_pct * 100.0
+                ),
+            )
+        } else if diff_pct < -0.005 {
+            let conf = match market_char {
+                MarketCharacter::Trending => 0.7,
+                MarketCharacter::MeanReverting => 0.3,
+                _ => 0.5,
+            };
+            (
+                SignalType::Sell,
+                conf,
+                format!(
+                    "ALMA(10) < ALMA(30) bearish cross ({:.2}%)",
+                    diff_pct * 100.0
+                ),
+            )
+        } else {
+            (
+                SignalType::Neutral,
+                0.0,
+                format!("ALMA neutral (diff {:.2}%)", diff_pct * 100.0),
+            )
+        };
+        if confidence > 0.0 {
+            signals.push(Signal {
+                signal_type: sig_type,
+                confidence,
+                reason,
+                source: "ALMA(10,30)".to_string(),
+                timestamp: now,
+            });
         }
+    }
 
     // SuperSmoother slope — Ehlers DSP momentum
     if analysis.super_smoother20.len() >= 2 {
@@ -592,37 +650,34 @@ fn generate_financial_hacker_signals(
             .and_then(|v| *v);
 
         if let (Some(curr_val), Some(prev_val)) = (curr, prev)
-            && prev_val > 0.0 {
-                let slope_pct = (curr_val - prev_val) / prev_val * 100.0;
-                let (sig_type, confidence, reason) = if slope_pct > 0.02 {
-                    (
-                        SignalType::Buy,
-                        0.55,
-                        format!("SuperSmoother slope positive (+{:.3}%)", slope_pct),
-                    )
-                } else if slope_pct < -0.02 {
-                    (
-                        SignalType::Sell,
-                        0.55,
-                        format!("SuperSmoother slope negative ({:.3}%)", slope_pct),
-                    )
-                } else {
-                    (
-                        SignalType::Neutral,
-                        0.0,
-                        "SuperSmoother flat".to_string(),
-                    )
-                };
-                if confidence > 0.0 {
-                    signals.push(Signal {
-                        signal_type: sig_type,
-                        confidence,
-                        reason,
-                        source: "SuperSmoother(20)".to_string(),
-                        timestamp: now,
-                    });
-                }
+            && prev_val > 0.0
+        {
+            let slope_pct = (curr_val - prev_val) / prev_val * 100.0;
+            let (sig_type, confidence, reason) = if slope_pct > 0.02 {
+                (
+                    SignalType::Buy,
+                    0.55,
+                    format!("SuperSmoother slope positive (+{:.3}%)", slope_pct),
+                )
+            } else if slope_pct < -0.02 {
+                (
+                    SignalType::Sell,
+                    0.55,
+                    format!("SuperSmoother slope negative ({:.3}%)", slope_pct),
+                )
+            } else {
+                (SignalType::Neutral, 0.0, "SuperSmoother flat".to_string())
+            };
+            if confidence > 0.0 {
+                signals.push(Signal {
+                    signal_type: sig_type,
+                    confidence,
+                    reason,
+                    source: "SuperSmoother(20)".to_string(),
+                    timestamp: now,
+                });
             }
+        }
     }
 
     // Hurst Exponent — regime signal (informational, affects other indicator weights)
@@ -647,13 +702,19 @@ fn generate_financial_hacker_signals(
                 (
                     SignalType::Buy,
                     0.4,
-                    format!("Hurst({:.2}) > 0.55 → Trending UP (use trend-following LONG)", h),
+                    format!(
+                        "Hurst({:.2}) > 0.55 → Trending UP (use trend-following LONG)",
+                        h
+                    ),
                 )
             } else if price_vs_sma < -0.01 {
                 (
                     SignalType::Sell,
                     0.4,
-                    format!("Hurst({:.2}) > 0.55 → Trending DOWN (use trend-following SHORT)", h),
+                    format!(
+                        "Hurst({:.2}) > 0.55 → Trending DOWN (use trend-following SHORT)",
+                        h
+                    ),
                 )
             } else {
                 (
@@ -666,7 +727,10 @@ fn generate_financial_hacker_signals(
             (
                 SignalType::Neutral,
                 0.4,
-                format!("Hurst({:.2}) < 0.45 → Mean-Reverting (use mean-reversion)", h),
+                format!(
+                    "Hurst({:.2}) < 0.45 → Mean-Reverting (use mean-reversion)",
+                    h
+                ),
             )
         } else {
             (
@@ -729,13 +793,19 @@ fn generate_financial_hacker_signals(
             (
                 SignalType::Buy,
                 0.65,
-                format!("CMO({:.1}) extremely oversold (< -50) → contrarian BUY", cmo),
+                format!(
+                    "CMO({:.1}) extremely oversold (< -50) → contrarian BUY",
+                    cmo
+                ),
             )
         } else if *cmo > 50.0 {
             (
                 SignalType::Sell,
                 0.65,
-                format!("CMO({:.1}) extremely overbought (> 50) → contrarian SELL", cmo),
+                format!(
+                    "CMO({:.1}) extremely overbought (> 50) → contrarian SELL",
+                    cmo
+                ),
             )
         } else if *cmo > 20.0 {
             (
@@ -750,11 +820,7 @@ fn generate_financial_hacker_signals(
                 format!("CMO({:.1}) bearish momentum zone", cmo),
             )
         } else {
-            (
-                SignalType::Neutral,
-                0.0,
-                format!("CMO({:.1}) neutral", cmo),
-            )
+            (SignalType::Neutral, 0.0, format!("CMO({:.1}) neutral", cmo))
         };
         if confidence > 0.0 {
             signals.push(Signal {
@@ -814,9 +880,18 @@ fn generate_financial_hacker_signals(
             (Some(fast), Some(slow)) => {
                 let both_agree = (fast > 0.8 && slow > 0.7) || (fast < 0.2 && slow < 0.3);
                 if both_agree && confidence > 0.0 {
-                    (confidence.min(0.85_f64), format!("{} [fast={:.2}, slow={:.2} confirm]", reason, fast, slow))
+                    (
+                        confidence.min(0.85_f64),
+                        format!("{} [fast={:.2}, slow={:.2} confirm]", reason, fast, slow),
+                    )
                 } else if (fast - slow).abs() > 0.3 {
-                    (confidence * 0.6, format!("{} [divergence: fast={:.2}, slow={:.2} — reduced confidence]", reason, fast, slow))
+                    (
+                        confidence * 0.6,
+                        format!(
+                            "{} [divergence: fast={:.2}, slow={:.2} — reduced confidence]",
+                            reason, fast, slow
+                        ),
+                    )
                 } else {
                     (confidence, reason)
                 }
@@ -836,4 +911,153 @@ fn generate_financial_hacker_signals(
     }
 
     signals
+}
+
+// ─── Laguerre RSI Divergence Signal ─────────────────────────────
+
+/// Signal from LaguerreRSI divergence (fast gamma=0.5 minus slow gamma=0.8).
+///
+/// Research source: trading-process-improvement.md — Quick Win #8.
+/// When fast LaguerreRSI diverges from slow, it indicates momentum acceleration/deceleration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LaguerreDivergenceSignal {
+    /// Fast significantly above slow → momentum accelerating → bullish.
+    StrongBuy,
+    /// Slight positive divergence.
+    Buy,
+    /// No significant divergence.
+    Neutral,
+    /// Slight negative divergence.
+    Sell,
+    /// Fast significantly below slow → momentum decelerating → bearish.
+    StrongSell,
+}
+
+impl std::fmt::Display for LaguerreDivergenceSignal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LaguerreDivergenceSignal::StrongBuy => write!(f, "StrongBuy"),
+            LaguerreDivergenceSignal::Buy => write!(f, "Buy"),
+            LaguerreDivergenceSignal::Neutral => write!(f, "Neutral"),
+            LaguerreDivergenceSignal::Sell => write!(f, "Sell"),
+            LaguerreDivergenceSignal::StrongSell => write!(f, "StrongSell"),
+        }
+    }
+}
+
+/// Interpret LaguerreRSI divergence value as a trading signal.
+///
+/// # Thresholds
+/// - divergence > 0.3 → StrongBuy (momentum accelerating fast)
+/// - divergence > 0.1 → Buy
+/// - |divergence| ≤ 0.1 → Neutral
+/// - divergence < -0.1 → Sell
+/// - divergence < -0.3 → StrongSell (momentum decelerating fast)
+pub fn interpret_laguerre_divergence(divergence: f64) -> LaguerreDivergenceSignal {
+    if divergence > 0.3 {
+        LaguerreDivergenceSignal::StrongBuy
+    } else if divergence > 0.1 {
+        LaguerreDivergenceSignal::Buy
+    } else if divergence < -0.3 {
+        LaguerreDivergenceSignal::StrongSell
+    } else if divergence < -0.1 {
+        LaguerreDivergenceSignal::Sell
+    } else {
+        LaguerreDivergenceSignal::Neutral
+    }
+}
+
+/// Get the latest LaguerreRSI divergence signal from a FullAnalysis.
+pub fn latest_laguerre_signal(analysis: &FullAnalysis) -> Option<LaguerreDivergenceSignal> {
+    analysis
+        .laguerre_divergence
+        .last()
+        .and_then(|v| *v)
+        .map(interpret_laguerre_divergence)
+}
+
+#[cfg(test)]
+mod batch_divergence_tests {
+    use super::*;
+
+    #[test]
+    fn test_interpret_divergence_strong_buy() {
+        assert_eq!(
+            interpret_laguerre_divergence(0.5),
+            LaguerreDivergenceSignal::StrongBuy
+        );
+    }
+
+    #[test]
+    fn test_interpret_divergence_buy() {
+        assert_eq!(
+            interpret_laguerre_divergence(0.15),
+            LaguerreDivergenceSignal::Buy
+        );
+    }
+
+    #[test]
+    fn test_interpret_divergence_neutral() {
+        assert_eq!(
+            interpret_laguerre_divergence(0.05),
+            LaguerreDivergenceSignal::Neutral
+        );
+        assert_eq!(
+            interpret_laguerre_divergence(-0.05),
+            LaguerreDivergenceSignal::Neutral
+        );
+        assert_eq!(
+            interpret_laguerre_divergence(0.0),
+            LaguerreDivergenceSignal::Neutral
+        );
+    }
+
+    #[test]
+    fn test_interpret_divergence_sell() {
+        assert_eq!(
+            interpret_laguerre_divergence(-0.15),
+            LaguerreDivergenceSignal::Sell
+        );
+    }
+
+    #[test]
+    fn test_interpret_divergence_strong_sell() {
+        assert_eq!(
+            interpret_laguerre_divergence(-0.5),
+            LaguerreDivergenceSignal::StrongSell
+        );
+    }
+
+    #[test]
+    fn test_full_analysis_has_divergence() {
+        // Generate some price data
+        let closes: Vec<f64> = (0..200)
+            .map(|i| 100.0 + (i as f64 * 0.5).sin() * 10.0)
+            .collect();
+        let analysis = compute_full_analysis(&closes);
+
+        // Divergence vector should have same length
+        assert_eq!(analysis.laguerre_divergence.len(), closes.len());
+        assert_eq!(analysis.laguerre_rsi.len(), closes.len());
+        assert_eq!(analysis.laguerre_rsi_fast.len(), closes.len());
+
+        // After warmup, some values should be present
+        let non_none = analysis
+            .laguerre_divergence
+            .iter()
+            .filter(|v| v.is_some())
+            .count();
+        assert!(non_none > 0, "Should have some non-None divergence values");
+    }
+
+    #[test]
+    fn test_latest_laguerre_signal() {
+        let closes: Vec<f64> = (0..200)
+            .map(|i| 100.0 + (i as f64 * 0.5).sin() * 10.0)
+            .collect();
+        let analysis = compute_full_analysis(&closes);
+        let signal = latest_laguerre_signal(&analysis);
+        // Should produce some signal
+        assert!(signal.is_some());
+    }
 }

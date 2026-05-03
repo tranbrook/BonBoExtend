@@ -18,9 +18,7 @@
 //! - Lillo (2012): Transient Impact in Order-Driven Markets
 //! - arXiv:2603.09164: Slippage-at-Risk for Perpetual Futures
 
-use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use std::str::FromStr;
 
 /// Per-symbol market impact parameters.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -156,18 +154,17 @@ pub fn estimate_impact(
     // Almgren-Chriss optimal execution time
     // T* ∝ √(η × Q / (λ × σ² × V))
     let optimal_time_hours = if risk_aversion > 0.0 {
-        (params.eta * participation / (risk_aversion * params.sigma * params.sigma)).sqrt() * 24.0 * 0.1
+        (params.eta * participation / (risk_aversion * params.sigma * params.sigma)).sqrt()
+            * 24.0
+            * 0.1
     } else {
         0.01 // immediate
     };
 
     // Determine algorithm and parameters
     let size_vs_avg = order_notional_usd / params.avg_trade_usd;
-    let (algo, slices, interval) = select_algo_params(
-        size_vs_avg,
-        participation,
-        optimal_time_hours,
-    );
+    let (algo, slices, interval) =
+        select_algo_params(size_vs_avg, participation, optimal_time_hours);
 
     ImpactEstimate {
         impact_bps,
@@ -208,7 +205,7 @@ fn select_algo_params(
         let slices = std::cmp::max(10, (participation * 2000.0) as usize).min(30);
         ("VWAP".to_string(), slices, 60)
     } else {
-        (format!("ICEBERG"), 20, 30)
+        ("ICEBERG".to_string(), 20, 30)
     }
 }
 
@@ -343,8 +340,8 @@ pub fn compute_slippage_at_risk(
     let concentration_ratio = (bid_concentration + ask_concentration) / 2.0;
 
     // 3. Fragility signal: concentration > 0.5 AND total depth < 2x order
-    let total_depth_usd: f64 = top_bid_notional_usd.iter().sum::<f64>()
-        + top_ask_notional_usd.iter().sum::<f64>();
+    let total_depth_usd: f64 =
+        top_bid_notional_usd.iter().sum::<f64>() + top_ask_notional_usd.iter().sum::<f64>();
     let fragile = concentration_ratio > 0.5 || total_depth_usd < order_usd * 2.0;
 
     // 4. Concentration haircut: scale impact by (1 + concentration_penalty)
@@ -372,7 +369,9 @@ pub fn compute_slippage_at_risk(
         for _ in 0..20 {
             let mid = (lo + hi) / 2.0;
             let test_est = estimate_impact(params, mid, 0.0005, 1.0);
-            let test_sar = test_est.impact_bps * (1.0 + concentration_penalty) * (1.0 + 1.645 * spread_vol_ratio * 0.5);
+            let test_sar = test_est.impact_bps
+                * (1.0 + concentration_penalty)
+                * (1.0 + 1.645 * spread_vol_ratio * 0.5);
             if test_sar < 10.0 {
                 lo = mid;
             } else {
@@ -437,8 +436,7 @@ impl CascadeDetection {
         let volume_triggered = volume_ratio > 5.0;
         let concentration_triggered = concentration_ratio > 0.7;
 
-        let cascade_detected = spread_triggered
-            || (volume_triggered && concentration_triggered);
+        let cascade_detected = spread_triggered || (volume_triggered && concentration_triggered);
 
         let action = if cascade_detected {
             "🚨 CASCADE DETECTED — Pause all execution, widen limits 3x".to_string()
@@ -467,7 +465,11 @@ mod tests {
     fn test_square_root_law_tiny_order() {
         let params = ImpactParams::seiusdt();
         let est = estimate_impact(&params, 50.0, 0.0005, 1.0);
-        assert!(est.impact_bps < 10.0, "tiny order should have low impact: {}", est.impact_bps);
+        assert!(
+            est.impact_bps < 10.0,
+            "tiny order should have low impact: {}",
+            est.impact_bps
+        );
         assert_eq!(est.recommended_algo, "MARKET");
     }
 
@@ -475,7 +477,10 @@ mod tests {
     fn test_square_root_law_medium_order() {
         let params = ImpactParams::seiusdt();
         let est = estimate_impact(&params, 5_000.0, 0.0005, 1.0);
-        assert!(est.impact_bps > 5.0, "medium order should have measurable impact");
+        assert!(
+            est.impact_bps > 5.0,
+            "medium order should have measurable impact"
+        );
         assert!(est.recommended_slices > 1);
     }
 
@@ -484,7 +489,11 @@ mod tests {
         let params = ImpactParams::seiusdt();
         let est = estimate_impact(&params, 50_000.0, 0.0005, 1.0);
         // η=1.0 calibrated: $50K → ~16bps (real data shows ~10bps actual)
-        assert!(est.impact_bps > 10.0, "large order should have measurable impact: {}", est.impact_bps);
+        assert!(
+            est.impact_bps > 10.0,
+            "large order should have measurable impact: {}",
+            est.impact_bps
+        );
         assert!(est.recommended_algo.contains("TWAP") || est.recommended_algo.contains("VWAP"));
     }
 
@@ -493,7 +502,11 @@ mod tests {
         let params = ImpactParams::btcusdt();
         let est = estimate_impact(&params, 1_000.0, 0.0004, 1.0);
         // BTC is so liquid that $1000 is negligible
-        assert!(est.impact_bps < 1.0, "BTC $1K should be near-zero impact: {}", est.impact_bps);
+        assert!(
+            est.impact_bps < 1.0,
+            "BTC $1K should be near-zero impact: {}",
+            est.impact_bps
+        );
         assert_eq!(est.recommended_algo, "MARKET");
     }
 
@@ -508,8 +521,14 @@ mod tests {
         let impact_at_600 = state.compute_impact(600.0, 1.0);
 
         // Impact should decay over time
-        assert!(impact_at_0 > impact_at_300, "impact should decay: {impact_at_0} > {impact_at_300}");
-        assert!(impact_at_300 > impact_at_600, "impact should keep decaying: {impact_at_300} > {impact_at_600}");
+        assert!(
+            impact_at_0 > impact_at_300,
+            "impact should decay: {impact_at_0} > {impact_at_300}"
+        );
+        assert!(
+            impact_at_300 > impact_at_600,
+            "impact should keep decaying: {impact_at_300} > {impact_at_600}"
+        );
     }
 
     #[test]
@@ -539,7 +558,11 @@ mod tests {
         let sar = compute_slippage_at_risk(&params, 5_000.0, &bids, &asks, &bid_n, &ask_n);
         assert!(sar.sar_95_bps > 0.0);
         assert!(!sar.fragile_book, "distributed book should not be fragile");
-        assert!(sar.concentration_ratio < 0.5, "distributed: ratio = {}", sar.concentration_ratio);
+        assert!(
+            sar.concentration_ratio < 0.5,
+            "distributed: ratio = {}",
+            sar.concentration_ratio
+        );
     }
 
     #[test]
@@ -552,7 +575,11 @@ mod tests {
         let ask_n = vec![6050.0, 60.5, 60.5, 60.5, 60.5];
 
         let sar = compute_slippage_at_risk(&params, 5_000.0, &bids, &asks, &bid_n, &ask_n);
-        assert!(sar.concentration_ratio > 0.5, "concentrated: ratio = {}", sar.concentration_ratio);
+        assert!(
+            sar.concentration_ratio > 0.5,
+            "concentrated: ratio = {}",
+            sar.concentration_ratio
+        );
         assert!(sar.fragile_book, "concentrated book should be fragile");
     }
 
@@ -566,7 +593,10 @@ mod tests {
     #[test]
     fn test_cascade_detection_spread_widening() {
         let det = CascadeDetection::analyze(10.0, 1.6, 100.0, 100.0, 0.3);
-        assert!(det.cascade_detected, "spread 6x normal should trigger cascade");
+        assert!(
+            det.cascade_detected,
+            "spread 6x normal should trigger cascade"
+        );
         assert!(det.spread_ratio > 3.0);
     }
 
@@ -574,7 +604,10 @@ mod tests {
     fn test_cascade_detection_volume_spike() {
         let det = CascadeDetection::analyze(2.0, 1.6, 800.0, 100.0, 0.8);
         // Volume 8x + concentration 0.8 → cascade
-        assert!(det.cascade_detected, "volume spike + concentration should trigger");
+        assert!(
+            det.cascade_detected,
+            "volume spike + concentration should trigger"
+        );
     }
 
     #[test]
@@ -594,6 +627,9 @@ mod tests {
         let btc = ImpactParams::btcusdt();
         let est_sei = estimate_impact(&sei, 10_000.0, 0.0005, 1.0);
         let est_btc = estimate_impact(&btc, 10_000.0, 0.0004, 1.0);
-        assert!(est_btc.impact_bps < est_sei.impact_bps, "BTC should have lower impact for same $ size");
+        assert!(
+            est_btc.impact_bps < est_sei.impact_bps,
+            "BTC should have lower impact for same $ size"
+        );
     }
 }

@@ -7,7 +7,9 @@
 use crate::models::{Order, OrderSide, OrderType};
 use crate::strategy::{Strategy, StrategyContext};
 use bonbo_ta::IncrementalIndicator;
-use bonbo_ta::indicators::{Alma, Atr, BollingerBands, Cmo, HurstExponent, LaguerreRsi, Rsi, SuperSmoother};
+use bonbo_ta::indicators::{
+    Alma, Atr, BollingerBands, Cmo, HurstExponent, LaguerreRsi, Rsi, SuperSmoother,
+};
 use bonbo_ta::models::OhlcvCandle;
 
 // ─── Ehlers Trend Following Strategy ─────────────────────────────
@@ -132,36 +134,38 @@ impl Strategy for EhlersTrendStrategy {
         // Update trailing stop
         if let Some(_entry) = self.entry_price
             && let Some(atr_v) = atr_val
-                && atr_v > 0.0
-                    && ctx.has_position(symbol) {
-                        // Long position: trail up
-                        let new_stop = candle.close - 2.0 * atr_v;
-                        self.trailing_stop = Some(
-                            self.trailing_stop
-                                .map(|s| s.max(new_stop))
-                                .unwrap_or(new_stop),
-                        );
-                    }
+            && atr_v > 0.0
+            && ctx.has_position(symbol)
+        {
+            // Long position: trail up
+            let new_stop = candle.close - 2.0 * atr_v;
+            self.trailing_stop = Some(
+                self.trailing_stop
+                    .map(|s| s.max(new_stop))
+                    .unwrap_or(new_stop),
+            );
+        }
 
         // Check trailing stop exit
         if ctx.has_position(symbol) {
             if let Some(stop) = self.trailing_stop
-                && candle.close <= stop {
-                    orders.push(Order {
-                        id: format!("ord-stop-{}", ctx.bar_index),
-                        symbol: symbol.to_string(),
-                        side: OrderSide::Sell,
-                        order_type: OrderType::Market,
-                        quantity: 0.0,
-                        price: None,
-                        stop_loss: None,
-                        take_profit: None,
-                        timestamp: candle.timestamp,
-                    });
-                    self.entry_price = None;
-                    self.trailing_stop = None;
-                    return orders;
-                }
+                && candle.close <= stop
+            {
+                orders.push(Order {
+                    id: format!("ord-stop-{}", ctx.bar_index),
+                    symbol: symbol.to_string(),
+                    side: OrderSide::Sell,
+                    order_type: OrderType::Market,
+                    quantity: 0.0,
+                    price: None,
+                    stop_loss: None,
+                    take_profit: None,
+                    timestamp: candle.timestamp,
+                });
+                self.entry_price = None;
+                self.trailing_stop = None;
+                return orders;
+            }
 
             // Exit on crossover reversal
             if crossover_down {
@@ -323,24 +327,25 @@ impl Strategy for EnhancedMeanReversionStrategy {
 
             // Stop loss check (2×ATR)
             if let Some(atr_v) = atr_val
-                && let Some(pos) = ctx.positions.get(symbol) {
-                    let stop = pos.0 - 2.0 * atr_v;
-                    if candle.close <= stop {
-                        orders.push(Order {
-                            id: format!("ord-mr-sl-{}", ctx.bar_index),
-                            symbol: symbol.to_string(),
-                            side: OrderSide::Sell,
-                            order_type: OrderType::Market,
-                            quantity: 0.0,
-                            price: None,
-                            stop_loss: None,
-                            take_profit: None,
-                            timestamp: candle.timestamp,
-                        });
-                        self.bars_held = 0;
-                        return orders;
-                    }
+                && let Some(pos) = ctx.positions.get(symbol)
+            {
+                let stop = pos.0 - 2.0 * atr_v;
+                if candle.close <= stop {
+                    orders.push(Order {
+                        id: format!("ord-mr-sl-{}", ctx.bar_index),
+                        symbol: symbol.to_string(),
+                        side: OrderSide::Sell,
+                        order_type: OrderType::Market,
+                        quantity: 0.0,
+                        price: None,
+                        stop_loss: None,
+                        take_profit: None,
+                        timestamp: candle.timestamp,
+                    });
+                    self.bars_held = 0;
+                    return orders;
                 }
+            }
         }
 
         // Entry: BB extreme + RSI(2) extreme + Hurst mean-reverting
@@ -477,12 +482,14 @@ impl Strategy for AlmaCrossoverStrategy {
 
                 // Trailing stop update
                 if ctx.has_position(symbol)
-                    && let Some(atr) = atr_val {
-                        let new_stop = candle.close - 2.0 * atr;
-                        if self.trailing_stop.is_none() || new_stop > self.trailing_stop.unwrap() {
+                    && let Some(atr) = atr_val
+                {
+                    let new_stop = candle.close - 2.0 * atr;
+                    if let Some(ts) = self.trailing_stop {
+                        if new_stop > ts {
                             self.trailing_stop = Some(new_stop);
                         }
-                        if candle.close <= self.trailing_stop.unwrap() {
+                        if candle.close <= ts {
                             orders.push(Order {
                                 id: format!("ord-stop-{}", ctx.bar_index),
                                 symbol: symbol.to_string(),
@@ -497,7 +504,10 @@ impl Strategy for AlmaCrossoverStrategy {
                             self.entry_price = None;
                             self.trailing_stop = None;
                         }
+                    } else {
+                        self.trailing_stop = Some(new_stop);
                     }
+                }
             }
             self.prev_fast = Some(f);
             self.prev_slow = Some(s);
@@ -612,12 +622,14 @@ impl Strategy for LaguerreRsiStrategy {
 
                 // Trailing stop
                 if ctx.has_position(symbol)
-                    && let Some(atr) = atr_val {
-                        let new_stop = candle.close - 2.0 * atr;
-                        if self.trailing_stop.is_none() || new_stop > self.trailing_stop.unwrap() {
+                    && let Some(atr) = atr_val
+                {
+                    let new_stop = candle.close - 2.0 * atr;
+                    if let Some(ts) = self.trailing_stop {
+                        if new_stop > ts {
                             self.trailing_stop = Some(new_stop);
                         }
-                        if candle.close <= self.trailing_stop.unwrap() {
+                        if candle.close <= ts {
                             orders.push(Order {
                                 id: format!("ord-stop-{}", ctx.bar_index),
                                 symbol: symbol.to_string(),
@@ -632,7 +644,10 @@ impl Strategy for LaguerreRsiStrategy {
                             self.entry_price = None;
                             self.trailing_stop = None;
                         }
+                    } else {
+                        self.trailing_stop = Some(new_stop);
                     }
+                }
             }
             self.prev_lag = Some(lag);
         }
@@ -746,12 +761,14 @@ impl Strategy for CmoMomentumStrategy {
 
                 // Trailing stop
                 if ctx.has_position(symbol)
-                    && let Some(atr) = atr_val {
-                        let new_stop = candle.close - 2.0 * atr;
-                        if self.trailing_stop.is_none() || new_stop > self.trailing_stop.unwrap() {
+                    && let Some(atr) = atr_val
+                {
+                    let new_stop = candle.close - 2.0 * atr;
+                    if let Some(ts) = self.trailing_stop {
+                        if new_stop > ts {
                             self.trailing_stop = Some(new_stop);
                         }
-                        if candle.close <= self.trailing_stop.unwrap() {
+                        if candle.close <= ts {
                             orders.push(Order {
                                 id: format!("ord-stop-{}", ctx.bar_index),
                                 symbol: symbol.to_string(),
@@ -766,7 +783,10 @@ impl Strategy for CmoMomentumStrategy {
                             self.entry_price = None;
                             self.trailing_stop = None;
                         }
+                    } else {
+                        self.trailing_stop = Some(new_stop);
                     }
+                }
             }
             self.prev_cmo = Some(cmo);
         }
@@ -832,8 +852,7 @@ impl FhCompositeStrategy {
     }
 
     /// Compute composite FH score (0-100).
-    fn compute_score(&self, alma_bullish: bool, ss_slope_pct: f64,
-                     lag: f64, cmo: f64) -> f64 {
+    fn compute_score(&self, alma_bullish: bool, ss_slope_pct: f64, lag: f64, cmo: f64) -> f64 {
         let mut score = 50.0;
 
         // ALMA crossover (30% weight)
@@ -896,8 +915,12 @@ impl Strategy for FhCompositeStrategy {
             let _alma_bearish = f < s;
 
             // SS slope as percentage
-            let ss_slope = if self.prev_ss.is_some() && self.prev_ss.unwrap() > 0.0 {
-                (ss - self.prev_ss.unwrap()) / self.prev_ss.unwrap() * 100.0
+            let ss_slope = if let Some(prev) = self.prev_ss {
+                if prev > 0.0 {
+                    (ss - prev) / prev * 100.0
+                } else {
+                    0.0
+                }
             } else {
                 0.0
             };
@@ -944,12 +967,14 @@ impl Strategy for FhCompositeStrategy {
 
             // Trailing stop
             if ctx.has_position(symbol)
-                && let Some(atr) = atr_val {
-                    let new_stop = candle.close - 2.0 * atr;
-                    if self.trailing_stop.is_none() || new_stop > self.trailing_stop.unwrap() {
+                && let Some(atr) = atr_val
+            {
+                let new_stop = candle.close - 2.0 * atr;
+                if let Some(ts) = self.trailing_stop {
+                    if new_stop > ts {
                         self.trailing_stop = Some(new_stop);
                     }
-                    if candle.close <= self.trailing_stop.unwrap() {
+                    if candle.close <= ts {
                         orders.push(Order {
                             id: format!("ord-stop-{}", ctx.bar_index),
                             symbol: symbol.to_string(),
@@ -964,7 +989,10 @@ impl Strategy for FhCompositeStrategy {
                         self.entry_price = None;
                         self.trailing_stop = None;
                     }
+                } else {
+                    self.trailing_stop = Some(new_stop);
                 }
+            }
 
             self.prev_fast = Some(f);
             self.prev_slow = Some(s);
@@ -976,7 +1004,6 @@ impl Strategy for FhCompositeStrategy {
         orders
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -1221,18 +1248,39 @@ mod tests {
         let mut candles: Vec<OhlcvCandle> = (0..100)
             .map(|i| {
                 let price = 200.0 - i as f64 * 0.5; // Declining first
-                make_candle(i as i64 * 3600, price + 0.5, price + 1.0, price - 1.0, price, 1000.0)
+                make_candle(
+                    i as i64 * 3600,
+                    price + 0.5,
+                    price + 1.0,
+                    price - 1.0,
+                    price,
+                    1000.0,
+                )
             })
             .collect();
         // Then flat
         candles.extend((100..130).map(|i| {
             let price = 150.0;
-            make_candle(i as i64 * 3600, price + 0.2, price + 0.5, price - 0.5, price, 1000.0)
+            make_candle(
+                i as i64 * 3600,
+                price + 0.2,
+                price + 0.5,
+                price - 0.5,
+                price,
+                1000.0,
+            )
         }));
         // Then strong uptrend → ALMA(10) crosses above ALMA(30)
         candles.extend((130..400).map(|i| {
             let price = 150.0 + (i - 130) as f64 * 1.0;
-            make_candle(i as i64 * 3600, price - 0.5, price + 1.0, price - 1.0, price, 1000.0)
+            make_candle(
+                i as i64 * 3600,
+                price - 0.5,
+                price + 1.0,
+                price - 1.0,
+                price,
+                1000.0,
+            )
         }));
 
         let strategy = AlmaCrossoverStrategy::new();
@@ -1242,7 +1290,8 @@ mod tests {
         assert!(
             result.total_buys > 0,
             "ALMA should detect trend change and generate buy signals. buys={}, sells={}",
-            result.total_buys, result.total_sells
+            result.total_buys,
+            result.total_sells
         );
         assert!(
             result.total_return > -50.0,
@@ -1346,14 +1395,28 @@ mod tests {
         let mut candles: Vec<OhlcvCandle> = (0..80)
             .map(|i| {
                 let price = 100.0 - i as f64 * 1.0; // Sharp drop
-                make_candle(i as i64 * 3600, price + 0.5, price + 1.0, price - 1.0, price, 1000.0)
+                make_candle(
+                    i as i64 * 3600,
+                    price + 0.5,
+                    price + 1.0,
+                    price - 1.0,
+                    price,
+                    1000.0,
+                )
             })
             .collect();
 
         // Add recovery phase
         candles.extend((80..200).map(|i| {
             let price = 20.0 + (i - 80) as f64 * 0.3; // Recovery
-            make_candle(i as i64 * 3600, price + 0.5, price + 1.0, price - 1.0, price, 1000.0)
+            make_candle(
+                i as i64 * 3600,
+                price + 0.5,
+                price + 1.0,
+                price - 1.0,
+                price,
+                1000.0,
+            )
         }));
 
         let strategy = LaguerreRsiStrategy::new(0.8).unwrap();
@@ -1363,7 +1426,8 @@ mod tests {
         assert!(
             result.total_buys > 0 || result.total_sells >= 0,
             "LaguerreRSI should process oversold recovery. buys={}, sells={}",
-            result.total_buys, result.total_sells
+            result.total_buys,
+            result.total_sells
         );
     }
 
@@ -1405,7 +1469,8 @@ mod tests {
         assert!(
             result.total_buys > 0 || result.total_return >= -100.0,
             "CMO should generate signals in trending market. buys={}, return={:.2}%",
-            result.total_buys, result.total_return
+            result.total_buys,
+            result.total_return
         );
     }
 
@@ -1428,14 +1493,28 @@ mod tests {
         let mut candles: Vec<OhlcvCandle> = (0..80)
             .map(|i| {
                 let price = 100.0 + i as f64 * 1.0; // Strong uptrend
-                make_candle(i as i64 * 3600, price - 0.5, price + 1.0, price - 1.0, price, 1000.0)
+                make_candle(
+                    i as i64 * 3600,
+                    price - 0.5,
+                    price + 1.0,
+                    price - 1.0,
+                    price,
+                    1000.0,
+                )
             })
             .collect();
 
         // Add flat phase to trigger CMO drop to zero
         candles.extend((80..200).map(|i| {
             let price = 180.0 + (i as f64 * 0.01).sin() * 0.5; // Flat
-            make_candle(i as i64 * 3600, price - 0.5, price + 0.5, price - 0.5, price, 1000.0)
+            make_candle(
+                i as i64 * 3600,
+                price - 0.5,
+                price + 0.5,
+                price - 0.5,
+                price,
+                1000.0,
+            )
         }));
 
         let strategy = CmoMomentumStrategy::new(14).unwrap();
@@ -1446,7 +1525,8 @@ mod tests {
             assert!(
                 result.total_sells > 0,
                 "If entered, should exit when CMO reverses. buys={}, sells={}",
-                result.total_buys, result.total_sells
+                result.total_buys,
+                result.total_sells
             );
         }
     }
@@ -1657,7 +1737,10 @@ mod tests {
                 let _ = strategy.on_bar(&mut ctx, candle);
             }
         }
-        assert!(true, "All FH strategies handle extreme prices without panic");
+        assert!(
+            true,
+            "All FH strategies handle extreme prices without panic"
+        );
     }
 
     #[test]
@@ -1667,7 +1750,10 @@ mod tests {
         assert_eq!(CmoMomentumStrategy::new(14).unwrap().name(), "CMO Momentum");
         assert_eq!(FhCompositeStrategy::new().unwrap().name(), "FH Composite");
         assert_eq!(EhlersTrendStrategy::new().name(), "Ehlers Trend Following");
-        assert_eq!(EnhancedMeanReversionStrategy::new().name(), "Enhanced Mean Reversion");
+        assert_eq!(
+            EnhancedMeanReversionStrategy::new().name(),
+            "Enhanced Mean Reversion"
+        );
     }
 }
 
@@ -1689,6 +1775,12 @@ pub struct BbBounceStrategy {
     stop_loss: Option<f64>,
 }
 
+impl Default for BbBounceStrategy {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BbBounceStrategy {
     pub fn new() -> Self {
         Self {
@@ -1703,7 +1795,9 @@ impl BbBounceStrategy {
 }
 
 impl Strategy for BbBounceStrategy {
-    fn name(&self) -> &str { "BB Bounce" }
+    fn name(&self) -> &str {
+        "BB Bounce"
+    }
 
     fn on_bar(&mut self, ctx: &mut StrategyContext, candle: &OhlcvCandle) -> Vec<Order> {
         let bb_val = self.bb.next(candle.close);
@@ -1723,16 +1817,16 @@ impl Strategy for BbBounceStrategy {
                     if candle.close <= bb.lower && rsi < 35.0 {
                         let sl = candle.close - atr * 1.5;
                         orders.push(Order {
-                        id: format!("ord-{}", ctx.bar_index),
-                        symbol: symbol.to_string(),
-                        side: OrderSide::Buy,
-                        order_type: OrderType::Market,
-                        quantity: ctx.equity * 0.95 / candle.close,
-                        price: None,
-                        stop_loss: None,
-                        take_profit: None,
-                        timestamp: candle.timestamp,
-                    });
+                            id: format!("ord-{}", ctx.bar_index),
+                            symbol: symbol.to_string(),
+                            side: OrderSide::Buy,
+                            order_type: OrderType::Market,
+                            quantity: ctx.equity * 0.95 / candle.close,
+                            price: None,
+                            stop_loss: None,
+                            take_profit: None,
+                            timestamp: candle.timestamp,
+                        });
                         self.entry_price = Some(candle.close);
                         self.stop_loss = Some(sl);
                     }
@@ -1740,26 +1834,27 @@ impl Strategy for BbBounceStrategy {
                     else if candle.close >= bb.upper && rsi > 65.0 {
                         let sl = candle.close + atr * 1.5;
                         orders.push(Order {
-                        id: format!("ord-{}", ctx.bar_index),
-                        symbol: symbol.to_string(),
-                        side: OrderSide::Sell,
-                        order_type: OrderType::Market,
-                        quantity: ctx.equity * 0.95 / candle.close,
-                        price: None,
-                        stop_loss: None,
-                        take_profit: None,
-                        timestamp: candle.timestamp,
-                    });
+                            id: format!("ord-{}", ctx.bar_index),
+                            symbol: symbol.to_string(),
+                            side: OrderSide::Sell,
+                            order_type: OrderType::Market,
+                            quantity: ctx.equity * 0.95 / candle.close,
+                            price: None,
+                            stop_loss: None,
+                            take_profit: None,
+                            timestamp: candle.timestamp,
+                        });
                         self.entry_price = Some(candle.close);
                         self.stop_loss = Some(sl);
                     }
                 }
-            } else if let Some(entry) = self.entry_price {
+            } else if let Some(_entry) = self.entry_price {
                 // Exit: price reaches BB middle or stop loss hit
                 let should_exit = if let Some(sl) = self.stop_loss {
                     // Check both TP (middle band) and SL
                     let position = ctx.positions.get(symbol);
-                    let is_long = position.map_or(false, |(_, _, side)| matches!(side, OrderSide::Buy));
+                    let is_long =
+                        position.is_some_and(|(_, _, side)| matches!(side, OrderSide::Buy));
 
                     if is_long {
                         candle.close >= bb.middle || candle.close <= sl
@@ -1771,7 +1866,11 @@ impl Strategy for BbBounceStrategy {
                 };
 
                 if should_exit {
-                    let side = if ctx.positions.get(symbol).map_or(false, |(_, _, s)| matches!(s, OrderSide::Buy)) {
+                    let side = if ctx
+                        .positions
+                        .get(symbol)
+                        .is_some_and(|(_, _, s)| matches!(s, OrderSide::Buy))
+                    {
                         OrderSide::Sell
                     } else {
                         OrderSide::Buy
@@ -1836,6 +1935,12 @@ pub struct HurstRegimeSwitchingStrategy {
     current_regime: String,
 }
 
+impl Default for HurstRegimeSwitchingStrategy {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HurstRegimeSwitchingStrategy {
     pub fn new() -> Self {
         Self {
@@ -1856,7 +1961,9 @@ impl HurstRegimeSwitchingStrategy {
 }
 
 impl Strategy for HurstRegimeSwitchingStrategy {
-    fn name(&self) -> &str { "Hurst Regime-Switching" }
+    fn name(&self) -> &str {
+        "Hurst Regime-Switching"
+    }
 
     fn on_bar(&mut self, ctx: &mut StrategyContext, candle: &OhlcvCandle) -> Vec<Order> {
         let fast = self.fast_alma.next(candle.close);
@@ -1886,7 +1993,11 @@ impl Strategy for HurstRegimeSwitchingStrategy {
 
         if in_transition && ctx.has_position(symbol) {
             // Exit during regime transitions
-            let side = if ctx.positions.get(symbol).map_or(false, |(_, _, s)| matches!(s, OrderSide::Buy)) {
+            let side = if ctx
+                .positions
+                .get(symbol)
+                .is_some_and(|(_, _, s)| matches!(s, OrderSide::Buy))
+            {
                 OrderSide::Sell
             } else {
                 OrderSide::Buy
@@ -1912,21 +2023,23 @@ impl Strategy for HurstRegimeSwitchingStrategy {
         if !ctx.has_position(symbol) && !in_transition {
             if h > 0.55 {
                 // TRENDING regime → ALMA crossover entry
-                if let (Some(f), Some(s), Some(pf), Some(ps)) = (fast, slow, self.prev_fast, self.prev_slow) {
+                if let (Some(f), Some(s), Some(pf), Some(ps)) =
+                    (fast, slow, self.prev_fast, self.prev_slow)
+                {
                     if pf <= ps && f > s {
                         // Golden cross
                         if let Some(atr) = atr_val {
                             orders.push(Order {
-                        id: format!("ord-{}", ctx.bar_index),
-                        symbol: symbol.to_string(),
-                        side: OrderSide::Buy,
-                        order_type: OrderType::Market,
-                        quantity: ctx.equity * 0.9 / candle.close,
-                        price: None,
-                        stop_loss: None,
-                        take_profit: None,
-                        timestamp: candle.timestamp,
-                    });
+                                id: format!("ord-{}", ctx.bar_index),
+                                symbol: symbol.to_string(),
+                                side: OrderSide::Buy,
+                                order_type: OrderType::Market,
+                                quantity: ctx.equity * 0.9 / candle.close,
+                                price: None,
+                                stop_loss: None,
+                                take_profit: None,
+                                timestamp: candle.timestamp,
+                            });
                             self.entry_price = Some(candle.close);
                             self.stop_loss = Some(candle.close - atr * atr_sl_mult);
                         }
@@ -1934,16 +2047,16 @@ impl Strategy for HurstRegimeSwitchingStrategy {
                         // Death cross → SHORT
                         if let Some(atr) = atr_val {
                             orders.push(Order {
-                        id: format!("ord-{}", ctx.bar_index),
-                        symbol: symbol.to_string(),
-                        side: OrderSide::Sell,
-                        order_type: OrderType::Market,
-                        quantity: ctx.equity * 0.9 / candle.close,
-                        price: None,
-                        stop_loss: None,
-                        take_profit: None,
-                        timestamp: candle.timestamp,
-                    });
+                                id: format!("ord-{}", ctx.bar_index),
+                                symbol: symbol.to_string(),
+                                side: OrderSide::Sell,
+                                order_type: OrderType::Market,
+                                quantity: ctx.equity * 0.9 / candle.close,
+                                price: None,
+                                stop_loss: None,
+                                take_profit: None,
+                                timestamp: candle.timestamp,
+                            });
                             self.entry_price = Some(candle.close);
                             self.stop_loss = Some(candle.close + atr * atr_sl_mult);
                         }
@@ -1954,30 +2067,30 @@ impl Strategy for HurstRegimeSwitchingStrategy {
                 if let (Some(bb), Some(rsi), Some(atr)) = (bb_val, rsi_val, atr_val) {
                     if candle.close <= bb.lower && rsi < 30.0 {
                         orders.push(Order {
-                        id: format!("ord-{}", ctx.bar_index),
-                        symbol: symbol.to_string(),
-                        side: OrderSide::Buy,
-                        order_type: OrderType::Market,
-                        quantity: ctx.equity * 0.9 / candle.close,
-                        price: None,
-                        stop_loss: None,
-                        take_profit: None,
-                        timestamp: candle.timestamp,
-                    });
+                            id: format!("ord-{}", ctx.bar_index),
+                            symbol: symbol.to_string(),
+                            side: OrderSide::Buy,
+                            order_type: OrderType::Market,
+                            quantity: ctx.equity * 0.9 / candle.close,
+                            price: None,
+                            stop_loss: None,
+                            take_profit: None,
+                            timestamp: candle.timestamp,
+                        });
                         self.entry_price = Some(candle.close);
                         self.stop_loss = Some(candle.close - atr * atr_sl_mult);
                     } else if candle.close >= bb.upper && rsi > 70.0 {
                         orders.push(Order {
-                        id: format!("ord-{}", ctx.bar_index),
-                        symbol: symbol.to_string(),
-                        side: OrderSide::Sell,
-                        order_type: OrderType::Market,
-                        quantity: ctx.equity * 0.9 / candle.close,
-                        price: None,
-                        stop_loss: None,
-                        take_profit: None,
-                        timestamp: candle.timestamp,
-                    });
+                            id: format!("ord-{}", ctx.bar_index),
+                            symbol: symbol.to_string(),
+                            side: OrderSide::Sell,
+                            order_type: OrderType::Market,
+                            quantity: ctx.equity * 0.9 / candle.close,
+                            price: None,
+                            stop_loss: None,
+                            take_profit: None,
+                            timestamp: candle.timestamp,
+                        });
                         self.entry_price = Some(candle.close);
                         self.stop_loss = Some(candle.close + atr * atr_sl_mult);
                     }
@@ -1987,11 +2100,22 @@ impl Strategy for HurstRegimeSwitchingStrategy {
         } else if ctx.has_position(symbol) {
             // Exit logic: trailing stop or regime change
             if let Some(sl) = self.stop_loss {
-                let is_long = ctx.positions.get(symbol).map_or(false, |(_, _, side)| matches!(side, OrderSide::Buy));
-                let hit_sl = if is_long { candle.close <= sl } else { candle.close >= sl };
+                let is_long = ctx
+                    .positions
+                    .get(symbol)
+                    .is_some_and(|(_, _, side)| matches!(side, OrderSide::Buy));
+                let hit_sl = if is_long {
+                    candle.close <= sl
+                } else {
+                    candle.close >= sl
+                };
 
                 if hit_sl {
-                    let side = if is_long { OrderSide::Sell } else { OrderSide::Buy };
+                    let side = if is_long {
+                        OrderSide::Sell
+                    } else {
+                        OrderSide::Buy
+                    };
                     orders.push(Order {
                         id: format!("ord-sl-{}", ctx.bar_index),
                         symbol: symbol.to_string(),
@@ -2007,47 +2131,57 @@ impl Strategy for HurstRegimeSwitchingStrategy {
                     self.stop_loss = None;
                 } else {
                     // Trail stop in trending regime
-                    if h > 0.55 {
-                        if let Some(atr) = atr_val {
-                            let is_long = ctx.positions.get(symbol).map_or(false, |(_, _, side)| matches!(side, OrderSide::Buy));
-                            if is_long {
-                                let new_sl = candle.close - atr * atr_sl_mult;
-                                if new_sl > sl {
-                                    self.stop_loss = Some(new_sl);
-                                }
-                            } else {
-                                let new_sl = candle.close + atr * atr_sl_mult;
-                                if new_sl < sl {
-                                    self.stop_loss = Some(new_sl);
-                                }
+                    if h > 0.55
+                        && let Some(atr) = atr_val
+                    {
+                        let is_long = ctx
+                            .positions
+                            .get(symbol)
+                            .is_some_and(|(_, _, side)| matches!(side, OrderSide::Buy));
+                        if is_long {
+                            let new_sl = candle.close - atr * atr_sl_mult;
+                            if new_sl > sl {
+                                self.stop_loss = Some(new_sl);
+                            }
+                        } else {
+                            let new_sl = candle.close + atr * atr_sl_mult;
+                            if new_sl < sl {
+                                self.stop_loss = Some(new_sl);
                             }
                         }
                     }
                     // Mean-reverting: exit at BB middle
-                    if h < 0.45 {
-                        if let Some(bb) = bb_val {
-                            let is_long = ctx.positions.get(symbol).map_or(false, |(_, _, side)| matches!(side, OrderSide::Buy));
-                            let should_exit = if is_long {
-                                candle.close >= bb.middle
+                    if h < 0.45
+                        && let Some(bb) = bb_val
+                    {
+                        let is_long = ctx
+                            .positions
+                            .get(symbol)
+                            .is_some_and(|(_, _, side)| matches!(side, OrderSide::Buy));
+                        let should_exit = if is_long {
+                            candle.close >= bb.middle
+                        } else {
+                            candle.close <= bb.middle
+                        };
+                        if should_exit {
+                            let side = if is_long {
+                                OrderSide::Sell
                             } else {
-                                candle.close <= bb.middle
+                                OrderSide::Buy
                             };
-                            if should_exit {
-                                let side = if is_long { OrderSide::Sell } else { OrderSide::Buy };
-                                orders.push(Order {
-                                    id: format!("ord-exit-{}", ctx.bar_index),
-                                    symbol: symbol.to_string(),
-                                    side,
-                                    order_type: OrderType::Market,
-                                    quantity: 0.0,
-                                    price: None,
-                                    stop_loss: None,
-                                    take_profit: None,
-                                    timestamp: candle.timestamp,
-                                });
-                                self.entry_price = None;
-                                self.stop_loss = None;
-                            }
+                            orders.push(Order {
+                                id: format!("ord-exit-{}", ctx.bar_index),
+                                symbol: symbol.to_string(),
+                                side,
+                                order_type: OrderType::Market,
+                                quantity: 0.0,
+                                price: None,
+                                stop_loss: None,
+                                take_profit: None,
+                                timestamp: candle.timestamp,
+                            });
+                            self.entry_price = None;
+                            self.stop_loss = None;
                         }
                     }
                 }

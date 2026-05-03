@@ -1,7 +1,7 @@
 //! Learning MCP Tools — DMA engine with persisted state.
 
-use crate::plugin::{PluginContext, PluginMetadata, ToolPlugin, ToolSchema};
 use async_trait::async_trait;
+use bonbo_extend_core::{PluginContext, PluginMetadata, ToolPlugin, ToolSchema};
 use serde_json::Value;
 use std::sync::Mutex;
 

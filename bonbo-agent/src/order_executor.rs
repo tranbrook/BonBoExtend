@@ -47,13 +47,16 @@ impl OrderExecutor for LiveOrderExecutor {
 
     async fn cancel_all(&self, symbol: &str) -> anyhow::Result<()> {
         // Cancel standard orders
-        bonbo_binance_futures::rest::OrdersClient::cancel_sl_tp_orders(&self.client, symbol).await?;
+        bonbo_binance_futures::rest::OrdersClient::cancel_sl_tp_orders(&self.client, symbol)
+            .await?;
         // Note: algo orders need tracked IDs from PositionTracker
         Ok(())
     }
 
     async fn get_open_orders(&self, symbol: &str) -> anyhow::Result<Vec<OrderResponse>> {
-        let orders = bonbo_binance_futures::rest::OrdersClient::get_open_orders(&self.client, symbol).await?;
+        let orders =
+            bonbo_binance_futures::rest::OrdersClient::get_open_orders(&self.client, symbol)
+                .await?;
         Ok(orders)
     }
 

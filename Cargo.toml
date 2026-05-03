@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "bonbo-extend-core",
     "bonbo-extend",
     "bonbo-extend-mcp",
     "bonbo-ta",
@@ -16,7 +17,7 @@ members = [
     "bonbo-executor",
     "bonbo-position-manager",
     "bonbo-agent",
-    "bonbo-funding",
+    "bonbo-portfolio",
 ]
 resolver = "2"
 

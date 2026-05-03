@@ -1,10 +1,10 @@
 //! WebSocket user data stream — order fills, account updates.
 
-use super::reconnect::connect_with_backoff;
 use super::WsMessage;
+use super::reconnect::connect_with_backoff;
+use crate::FuturesConfig;
 use crate::models::{WsAccountUpdate, WsOrderUpdate};
 use crate::rest::FuturesRestClient;
-use crate::FuturesConfig;
 use futures_util::{SinkExt, StreamExt};
 use tokio::sync::broadcast;
 use tokio_tungstenite::tungstenite::Message;
@@ -88,40 +88,96 @@ fn parse_user_message(text: &str) -> Option<WsMessage> {
                 event_type: event_type.to_string(),
                 event_time: value.get("E").and_then(|v| v.as_i64()).unwrap_or(0),
                 transaction_time: value.get("T").and_then(|v| v.as_i64()).unwrap_or(0),
-                symbol: o.get("s").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                symbol: o
+                    .get("s")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
                 order_id: o.get("i").and_then(|v| v.as_i64()).unwrap_or(0),
-                client_order_id: o.get("c").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                side: serde_json::from_value(o.get("S").cloned().unwrap_or_default()).unwrap_or(crate::models::Side::Buy),
-                order_type: serde_json::from_value(o.get("o").cloned().unwrap_or_default()).unwrap_or(crate::models::OrderType::Market),
-                time_in_force: serde_json::from_value(o.get("f").cloned().unwrap_or_default()).unwrap_or(crate::models::TimeInForce::Gtc),
-                orig_qty: o.get("q").and_then(|v| v.as_str()).and_then(|s| s.parse().ok()).unwrap_or(rust_decimal::Decimal::ZERO),
-                price: o.get("p").and_then(|v| v.as_str()).and_then(|s| s.parse().ok()).unwrap_or(rust_decimal::Decimal::ZERO),
-                avg_price: o.get("L").and_then(|v| v.as_str()).and_then(|s| s.parse().ok()).unwrap_or(rust_decimal::Decimal::ZERO),
-                stop_price: o.get("P").and_then(|v| v.as_str()).and_then(|s| s.parse().ok()).unwrap_or(rust_decimal::Decimal::ZERO),
-                execution_type: serde_json::from_value(o.get("x").cloned().unwrap_or_default()).unwrap_or(crate::models::OrderStatus::New),
-                order_status: serde_json::from_value(o.get("X").cloned().unwrap_or_default()).unwrap_or(crate::models::OrderStatus::New),
-                order_last_filled_qty: o.get("l").and_then(|v| v.as_str()).and_then(|s| s.parse().ok()).unwrap_or(rust_decimal::Decimal::ZERO),
-                order_filled_accumulated_qty: o.get("z").and_then(|v| v.as_str()).and_then(|s| s.parse().ok()).unwrap_or(rust_decimal::Decimal::ZERO),
-                commission: o.get("n").and_then(|v| v.as_str()).and_then(|s| s.parse().ok()).unwrap_or(rust_decimal::Decimal::ZERO),
-                commission_asset: o.get("N").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                client_order_id: o
+                    .get("c")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                side: serde_json::from_value(o.get("S").cloned().unwrap_or_default())
+                    .unwrap_or(crate::models::Side::Buy),
+                order_type: serde_json::from_value(o.get("o").cloned().unwrap_or_default())
+                    .unwrap_or(crate::models::OrderType::Market),
+                time_in_force: serde_json::from_value(o.get("f").cloned().unwrap_or_default())
+                    .unwrap_or(crate::models::TimeInForce::Gtc),
+                orig_qty: o
+                    .get("q")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(rust_decimal::Decimal::ZERO),
+                price: o
+                    .get("p")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(rust_decimal::Decimal::ZERO),
+                avg_price: o
+                    .get("L")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(rust_decimal::Decimal::ZERO),
+                stop_price: o
+                    .get("P")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(rust_decimal::Decimal::ZERO),
+                execution_type: serde_json::from_value(o.get("x").cloned().unwrap_or_default())
+                    .unwrap_or(crate::models::OrderStatus::New),
+                order_status: serde_json::from_value(o.get("X").cloned().unwrap_or_default())
+                    .unwrap_or(crate::models::OrderStatus::New),
+                order_last_filled_qty: o
+                    .get("l")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(rust_decimal::Decimal::ZERO),
+                order_filled_accumulated_qty: o
+                    .get("z")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(rust_decimal::Decimal::ZERO),
+                commission: o
+                    .get("n")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(rust_decimal::Decimal::ZERO),
+                commission_asset: o
+                    .get("N")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
                 order_trade_time: o.get("T").and_then(|v| v.as_i64()).unwrap_or(0),
                 buyer: o.get("b").and_then(|v| v.as_bool()).unwrap_or(false),
                 maker: o.get("m").and_then(|v| v.as_bool()).unwrap_or(false),
                 reduce_only: o.get("R").and_then(|v| v.as_bool()).unwrap_or(false),
                 close_position: o.get("cp").and_then(|v| v.as_bool()).unwrap_or(false),
-                position_side: serde_json::from_value(o.get("ps").cloned().unwrap_or_default()).unwrap_or(crate::models::PositionSide::Both),
+                position_side: serde_json::from_value(o.get("ps").cloned().unwrap_or_default())
+                    .unwrap_or(crate::models::PositionSide::Both),
             };
             Some(WsMessage::OrderUpdate(update))
         }
         "ACCOUNT_UPDATE" => {
             let a = value.get("a")?;
-            let balances = a.get("B")
+            let balances = a
+                .get("B")
                 .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|b| serde_json::from_value(b.clone()).ok()).collect())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|b| serde_json::from_value(b.clone()).ok())
+                        .collect()
+                })
                 .unwrap_or_default();
-            let positions = a.get("P")
+            let positions = a
+                .get("P")
                 .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|p| serde_json::from_value(p.clone()).ok()).collect())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|p| serde_json::from_value(p.clone()).ok())
+                        .collect()
+                })
                 .unwrap_or_default();
 
             let update = WsAccountUpdate {

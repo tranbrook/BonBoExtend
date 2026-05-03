@@ -1,7 +1,7 @@
 //! Backtest Plugin — exposes bonbo-quant backtesting via MCP tools.
 
-use crate::plugin::{ParameterSchema, PluginContext, PluginMetadata, ToolPlugin, ToolSchema};
 use async_trait::async_trait;
+use bonbo_extend_core::{ParameterSchema, PluginContext, PluginMetadata, ToolPlugin, ToolSchema};
 use serde_json::{Value, json};
 
 pub struct BacktestPlugin {
@@ -398,7 +398,9 @@ impl BacktestPlugin {
                 "laguerre_rsi" => {
                     let s = match bonbo_quant::LaguerreRsiStrategy::new(0.8) {
                         Some(s) => s,
-                        None => { continue; }
+                        None => {
+                            continue;
+                        }
                     };
                     let mut eng = bonbo_quant::engine::BacktestEngine::new(config.clone(), s);
                     eng.run(&candles).ok()
@@ -406,7 +408,9 @@ impl BacktestPlugin {
                 "cmo_momentum" => {
                     let s = match bonbo_quant::CmoMomentumStrategy::new(14) {
                         Some(s) => s,
-                        None => { continue; }
+                        None => {
+                            continue;
+                        }
                     };
                     let mut eng = bonbo_quant::engine::BacktestEngine::new(config.clone(), s);
                     eng.run(&candles).ok()
@@ -414,7 +418,9 @@ impl BacktestPlugin {
                 "fh_composite" => {
                     let s = match bonbo_quant::FhCompositeStrategy::new() {
                         Some(s) => s,
-                        None => { continue; }
+                        None => {
+                            continue;
+                        }
                     };
                     let mut eng = bonbo_quant::engine::BacktestEngine::new(config.clone(), s);
                     eng.run(&candles).ok()
@@ -528,7 +534,11 @@ mod tests {
             "strategy": "alma_crossover"
         });
         let result = p.run_backtest(&args).await;
-        assert!(result.is_ok(), "ALMA crossover should succeed: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "ALMA crossover should succeed: {:?}",
+            result
+        );
     }
 
     #[tokio::test]
@@ -588,7 +598,11 @@ mod tests {
             "strategy": "enhanced_mean_reversion"
         });
         let result = p.run_backtest(&args).await;
-        assert!(result.is_ok(), "Enhanced Mean Reversion should succeed: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "Enhanced Mean Reversion should succeed: {:?}",
+            result
+        );
     }
 
     #[tokio::test]
@@ -618,12 +632,22 @@ mod tests {
             "strategies": "sma_crossover,alma_crossover,laguerre_rsi,fh_composite"
         });
         let result = p.compare_strategies(&args).await;
-        assert!(result.is_ok(), "compare_strategies should succeed: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "compare_strategies should succeed: {:?}",
+            result
+        );
         let text = result.unwrap();
         // Should contain all specified strategies
         assert!(text.contains("sma_crossover"), "Should list sma_crossover");
-        assert!(text.contains("alma_crossover"), "Should list alma_crossover (FH)");
-        assert!(text.contains("laguerre_rsi"), "Should list laguerre_rsi (FH)");
+        assert!(
+            text.contains("alma_crossover"),
+            "Should list alma_crossover (FH)"
+        );
+        assert!(
+            text.contains("laguerre_rsi"),
+            "Should list laguerre_rsi (FH)"
+        );
     }
 
     #[tokio::test]

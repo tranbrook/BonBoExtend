@@ -8,7 +8,10 @@ pub struct MarketClient;
 
 impl MarketClient {
     /// Get mark price for a symbol.
-    pub async fn get_mark_price(client: &FuturesRestClient, symbol: &str) -> anyhow::Result<MarkPrice> {
+    pub async fn get_mark_price(
+        client: &FuturesRestClient,
+        symbol: &str,
+    ) -> anyhow::Result<MarkPrice> {
         let params = format!("symbol={}", symbol);
         let value = client.get_public("/fapi/v1/premiumIndex", &params).await?;
         let mark: MarkPrice = serde_json::from_value(value)?;
@@ -16,15 +19,24 @@ impl MarketClient {
     }
 
     /// Get current funding rate for a symbol.
-    pub async fn get_funding_rate(client: &FuturesRestClient, symbol: &str) -> anyhow::Result<FundingRate> {
+    pub async fn get_funding_rate(
+        client: &FuturesRestClient,
+        symbol: &str,
+    ) -> anyhow::Result<FundingRate> {
         let params = format!("symbol={}&limit=1", symbol);
         let value = client.get_public("/fapi/v1/fundingRate", &params).await?;
         let rates: Vec<FundingRate> = serde_json::from_value(value)?;
-        rates.into_iter().next().ok_or_else(|| anyhow::anyhow!("No funding rate data"))
+        rates
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("No funding rate data"))
     }
 
     /// Get 24h ticker for a symbol.
-    pub async fn get_24h_ticker(client: &FuturesRestClient, symbol: &str) -> anyhow::Result<Ticker24h> {
+    pub async fn get_24h_ticker(
+        client: &FuturesRestClient,
+        symbol: &str,
+    ) -> anyhow::Result<Ticker24h> {
         let params = format!("symbol={}", symbol);
         let value = client.get_public("/fapi/v1/ticker/24hr", &params).await?;
         let ticker: Ticker24h = serde_json::from_value(value)?;
@@ -32,7 +44,10 @@ impl MarketClient {
     }
 
     /// Get price for a symbol.
-    pub async fn get_price(client: &FuturesRestClient, symbol: &str) -> anyhow::Result<TickerPrice> {
+    pub async fn get_price(
+        client: &FuturesRestClient,
+        symbol: &str,
+    ) -> anyhow::Result<TickerPrice> {
         let params = format!("symbol={}", symbol);
         let value = client.get_public("/fapi/v2/ticker/price", &params).await?;
         let price: TickerPrice = serde_json::from_value(value)?;
@@ -40,7 +55,11 @@ impl MarketClient {
     }
 
     /// Get orderbook depth.
-    pub async fn get_depth(client: &FuturesRestClient, symbol: &str, limit: u32) -> anyhow::Result<serde_json::Value> {
+    pub async fn get_depth(
+        client: &FuturesRestClient,
+        symbol: &str,
+        limit: u32,
+    ) -> anyhow::Result<serde_json::Value> {
         let params = format!("symbol={}&limit={}", symbol, limit);
         client.get_public("/fapi/v1/depth", &params).await
     }

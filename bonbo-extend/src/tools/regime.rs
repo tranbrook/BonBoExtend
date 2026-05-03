@@ -1,7 +1,8 @@
 //! Regime MCP Tools — BOCPD regime detection from real market data.
 
-use crate::plugin::{ParameterSchema, PluginContext, PluginMetadata, ToolPlugin, ToolSchema};
 use async_trait::async_trait;
+use bonbo_data::binance_config::BinanceEndpoints;
+use bonbo_extend_core::{ParameterSchema, PluginContext, PluginMetadata, ToolPlugin, ToolSchema};
 use serde_json::{Value, json};
 
 use bonbo_regime::classifier::RegimeClassifier;
@@ -144,8 +145,8 @@ impl ToolPlugin for RegimePlugin {
 
                 // Price context
                 if closes.len() >= 2 {
-                    let first = closes.first().unwrap();
-                    let last = closes.last().unwrap();
+                    let first = closes[0];
+                    let last = closes[closes.len() - 1];
                     let change_pct = (last - first) / first * 100.0;
                     r.push_str(&format!(
                         "\n💰 Price range: ${:.2} → ${:.2} ({:+.2}%)\n",
@@ -172,11 +173,8 @@ impl ToolPlugin for RegimePlugin {
 impl RegimePlugin {
     /// Fetch real close prices from Binance API.
     async fn fetch_closes(&self, symbol: &str, timeframe: &str) -> anyhow::Result<Vec<f64>> {
-        let limit = 100;
-        let url = format!(
-            "https://api.binance.com/api/v3/klines?symbol={}&interval={}&limit={}",
-            symbol, timeframe, limit
-        );
+        let ep = BinanceEndpoints::current();
+        let url = ep.klines_url(symbol, timeframe, Some(100));
 
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(10))

@@ -160,10 +160,7 @@ impl DecisionLoop {
     }
 
     /// Scan watchlist for candidates using MCP client.
-    async fn scan_candidates(
-        &self,
-        mcp: &dyn McpClient,
-    ) -> anyhow::Result<Vec<ScanResult>> {
+    async fn scan_candidates(&self, mcp: &dyn McpClient) -> anyhow::Result<Vec<ScanResult>> {
         let results = mcp.scan_market(&self.config.watchlist.symbols).await?;
 
         // Filter by minimum criteria
@@ -175,8 +172,7 @@ impl DecisionLoop {
             })
             .filter(|r| {
                 // Minimum quant score if available
-                r.quant_score
-                    .unwrap_or(0) >= self.config.strategy.min_quant_score
+                r.quant_score.unwrap_or(0) >= self.config.strategy.min_quant_score
             })
             .collect();
 
@@ -224,15 +220,16 @@ impl DecisionLoop {
             // Check Hurst exponent
             let min_hurst = self.config.strategy.min_hurst;
             if let Some(hurst) = indicator.hurst
-                && hurst < min_hurst {
-                    tracing::debug!(
-                        "Skipping {}: Hurst {:.3} < min {:.2}",
-                        candidate.symbol,
-                        hurst,
-                        self.config.strategy.min_hurst
-                    );
-                    continue;
-                }
+                && hurst < min_hurst
+            {
+                tracing::debug!(
+                    "Skipping {}: Hurst {:.3} < min {:.2}",
+                    candidate.symbol,
+                    hurst,
+                    self.config.strategy.min_hurst
+                );
+                continue;
+            }
 
             // Check minimum score
             if indicator.score < self.config.strategy.min_quant_score {
@@ -253,7 +250,8 @@ impl DecisionLoop {
                 let trade = if is_long {
                     TradeParams::long(
                         &signal.symbol,
-                        self.calculate_quantity(candidate.price, signal.entry_price).await?,
+                        self.calculate_quantity(candidate.price, signal.entry_price)
+                            .await?,
                         signal.entry_price,
                         signal.stop_loss,
                         signal.take_profit,
@@ -261,7 +259,8 @@ impl DecisionLoop {
                 } else {
                     TradeParams::short(
                         &signal.symbol,
-                        self.calculate_quantity(candidate.price, signal.entry_price).await?,
+                        self.calculate_quantity(candidate.price, signal.entry_price)
+                            .await?,
                         signal.entry_price,
                         signal.stop_loss,
                         signal.take_profit,
@@ -296,9 +295,8 @@ impl DecisionLoop {
         entry_price: Decimal,
     ) -> anyhow::Result<Decimal> {
         let equity = self.risk_gate.read().await.equity();
-        let max_notional = equity
-            * Decimal::from(self.config.risk.max_position_pct)
-            / Decimal::ONE_HUNDRED;
+        let max_notional =
+            equity * Decimal::from(self.config.risk.max_position_pct) / Decimal::ONE_HUNDRED;
         let leverage = Decimal::from(self.config.risk.max_leverage);
         let quantity = (max_notional * leverage / entry_price).round_dp(1);
         Ok(quantity)

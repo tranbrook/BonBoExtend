@@ -1,7 +1,7 @@
 //! Price Alert Plugin — create and manage price alerts for crypto.
 
-use crate::plugin::*;
 use async_trait::async_trait;
+use bonbo_extend_core::*;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 

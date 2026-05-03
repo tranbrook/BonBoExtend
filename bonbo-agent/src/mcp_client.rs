@@ -26,7 +26,19 @@ pub struct IndicatorResult {
     pub macd_signal: Option<String>,
     pub ema_cross: Option<String>,
     pub hurst: Option<f64>,
+    /// Hurst short-term (50-bar window) — for divergence detection.
+    pub hurst_short: Option<f64>,
+    /// Hurst divergence result: |hurst_short - hurst_long| > 0.15 means regime transition.
+    pub hurst_divergence: Option<String>,
     pub laguerre_rsi: Option<f64>,
+    /// LaguerreRSI fast (gamma=0.5) — responsive.
+    pub laguerre_rsi_fast: Option<f64>,
+    /// LaguerreRSI divergence: fast - slow. Positive=bullish, Negative=bearish.
+    pub laguerre_divergence: Option<f64>,
+    /// ATR(14) value — for ATR-based stop loss.
+    pub atr_14: Option<f64>,
+    /// ADX value — trend strength.
+    pub adx: Option<f64>,
     /// Number of BUY signals.
     pub buy_signals: u32,
     /// Number of SELL signals.

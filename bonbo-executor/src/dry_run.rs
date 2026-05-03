@@ -1,7 +1,7 @@
 //! Dry-run executor — simulates order execution without real API calls.
 
-use crate::saga::{SagaResult, TradeParams};
 use crate::SagaExecutor;
+use crate::saga::{SagaResult, TradeParams};
 
 /// Dry-run executor wraps SagaExecutor with dry_run=true.
 pub struct DryRunExecutor {

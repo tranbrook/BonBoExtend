@@ -19,7 +19,7 @@ mod volume;
 
 pub use alma::Alma;
 pub use ehlers::{Cmo, LaguerreRsi, RoofingFilter, SuperSmoother};
-pub use hurst::{HurstExponent, MarketCharacter};
+pub use hurst::{HurstDfa, HurstExponent, HybridHurstResult, MarketCharacter};
 pub use moving_averages::{Ema, Sma};
 pub use oscillators::{Cci, Macd, MacdResult, Rsi, Stochastic, StochasticResult};
 pub use trend::{Adx, AdxResult};

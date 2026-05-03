@@ -1,7 +1,7 @@
 //! Sentinel Plugin — on-chain analytics and sentiment via MCP tools.
 
-use crate::plugin::{ParameterSchema, PluginContext, PluginMetadata, ToolPlugin, ToolSchema};
 use async_trait::async_trait;
+use bonbo_extend_core::{ParameterSchema, PluginContext, PluginMetadata, ToolPlugin, ToolSchema};
 use serde_json::{Value, json};
 
 pub struct SentinelPlugin {

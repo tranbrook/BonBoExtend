@@ -93,7 +93,10 @@ impl VolumeProfile {
             }
 
             let open_time_ms = arr[0].as_i64().unwrap_or(0);
-            let quote_vol = arr[7].as_str().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+            let quote_vol = arr[7]
+                .as_str()
+                .and_then(|s| s.parse::<f64>().ok())
+                .unwrap_or(0.0);
             let trades = arr[8].as_u64().unwrap_or(0) as u32;
 
             // Convert timestamp to UTC hour
@@ -151,7 +154,11 @@ impl VolumeProfile {
     /// Compute the "urgency factor" — how much volume is left today.
     /// Returns 0.0-1.0 where 1.0 = start of day, 0.0 = end of day.
     pub fn remaining_volume_fraction(&self) -> f64 {
-        let current_hour: u32 = chrono::Utc::now().format("%H").to_string().parse().unwrap_or(12);
+        let current_hour: u32 = chrono::Utc::now()
+            .format("%H")
+            .to_string()
+            .parse()
+            .unwrap_or(12);
         self.buckets[current_hour as usize..]
             .iter()
             .map(|b| b.weight)
@@ -203,7 +210,11 @@ impl VwapSchedule {
         interval_secs: u64,
         adapt_to_current_hour: bool,
     ) -> Self {
-        let current_hour: u32 = chrono::Utc::now().format("%H").to_string().parse().unwrap_or(12);
+        let current_hour: u32 = chrono::Utc::now()
+            .format("%H")
+            .to_string()
+            .parse()
+            .unwrap_or(12);
 
         // Collect weights for each slice slot
         // Strategy: distribute slices across remaining hours proportionally
@@ -247,7 +258,10 @@ impl VwapSchedule {
                 let n = if is_last {
                     num_slices - assigned
                 } else {
-                    std::cmp::max(0, (bucket.weight / total_w * num_slices as f64).round() as usize)
+                    std::cmp::max(
+                        0,
+                        (bucket.weight / total_w * num_slices as f64).round() as usize,
+                    )
                 };
                 let n = n.min(num_slices - assigned);
                 for _ in 0..n {
@@ -268,10 +282,7 @@ impl VwapSchedule {
 
         // Normalize weights
         let total_weight: f64 = slice_weights.iter().sum();
-        let normalized: Vec<f64> = slice_weights
-            .iter()
-            .map(|w| w / total_weight)
-            .collect();
+        let normalized: Vec<f64> = slice_weights.iter().map(|w| w / total_weight).collect();
 
         // Compute average weight to determine "peak" slices
         let avg_weight = 1.0 / num_slices as f64;
@@ -510,6 +521,7 @@ pub trait KlineFetcher: Send + Sync {
 /// * `impact_params` — Market impact parameters
 /// * `risk_state` — Cumulative risk state
 /// * `risk_limits` — Per-execution risk limits
+#[allow(clippy::too_many_arguments)]
 pub async fn execute_vwap(
     placer: &dyn OrderPlacer,
     kline_fetcher: &dyn KlineFetcher,
@@ -539,7 +551,11 @@ pub async fn execute_vwap(
         "📊 VWAP profile: {} | total_vol=${:.1}M | peak hour weight={:.3} | current_hour_weight={:.3}",
         symbol,
         profile.total_volume_usd / 1e6,
-        profile.buckets.iter().map(|b| b.weight).fold(f64::MIN, f64::max),
+        profile
+            .buckets
+            .iter()
+            .map(|b| b.weight)
+            .fold(f64::MIN, f64::max),
         profile.current_hour_weight()
     );
 
@@ -554,17 +570,26 @@ pub async fn execute_vwap(
 
     tracing::info!(
         "📋 VWAP schedule: {} slices | interval={}s | est_time={}s",
-        schedule.total_slices, schedule.interval_secs, schedule.estimated_time_secs
+        schedule.total_slices,
+        schedule.interval_secs,
+        schedule.estimated_time_secs
     );
 
     // ── Phase 3: Arrival price ───────────────────────────────
     let initial_book = placer.get_orderbook(symbol).await?;
     let arrival_price = initial_book.mid_price().unwrap_or(Decimal::ONE);
-    let start_spread_bps = initial_book.spread_bps().unwrap_or(config.normal_spread_bps);
+    let start_spread_bps = initial_book
+        .spread_bps()
+        .unwrap_or(config.normal_spread_bps);
 
     // Pre-trade risk check
     let pre_check = PreTradeCheck::run(
-        symbol, side, total_qty, arrival_price, risk_state, risk_limits,
+        symbol,
+        side,
+        total_qty,
+        arrival_price,
+        risk_state,
+        risk_limits,
     );
     if !pre_check.allowed {
         anyhow::bail!("VWAP pre-trade check failed: {:?}", pre_check.reason);
@@ -580,8 +605,10 @@ pub async fn execute_vwap(
     let mut slippage_pauses = 0usize;
     let mut spread_measurements: Vec<f64> = vec![start_spread_bps];
     let mut rng = SimpleRng::from_seed(start_epoch_ms as u64);
-    let min_slice = total_qty * Decimal::from_f64_retain(config.min_slice_weight).unwrap_or(Decimal::ZERO);
-    let max_slice = total_qty * Decimal::from_f64_retain(config.max_slice_weight).unwrap_or(total_qty);
+    let min_slice =
+        total_qty * Decimal::from_f64_retain(config.min_slice_weight).unwrap_or(Decimal::ZERO);
+    let max_slice =
+        total_qty * Decimal::from_f64_retain(config.max_slice_weight).unwrap_or(total_qty);
 
     for vwap_slice in &schedule.slices {
         if remaining <= Decimal::ZERO {
@@ -600,6 +627,7 @@ pub async fn execute_vwap(
         // ── Pre-slice checks with retry ──────────────────────
         let mut retries = 0usize;
         let mut planned_qty = vwap_slice.planned_qty;
+        #[allow(unused_assignments)]
         let mut status = "SCHEDULED".to_string();
 
         loop {
@@ -644,7 +672,10 @@ pub async fn execute_vwap(
                 }
                 tracing::warn!(
                     "⏸ VWAP slice {}: spread {:.1}bps, retry {}/{}",
-                    vwap_slice.index, current_spread_bps, retries, config.max_retries
+                    vwap_slice.index,
+                    current_spread_bps,
+                    retries,
+                    config.max_retries
                 );
                 tokio::time::sleep(Duration::from_secs(config.retry_delay_secs)).await;
                 continue;
@@ -667,22 +698,30 @@ pub async fn execute_vwap(
                 }
                 tracing::warn!(
                     "⏸ VWAP slice {}: slippage est {:.1}bps > max {:.1}bps",
-                    vwap_slice.index, est_slip, config.max_slippage_per_slice_bps
+                    vwap_slice.index,
+                    est_slip,
+                    config.max_slippage_per_slice_bps
                 );
                 // Reduce slice size for retry
                 let scale = (config.max_slippage_per_slice_bps / est_slip).max(0.3);
-                planned_qty = (planned_qty * Decimal::from_f64_retain(scale).unwrap_or(planned_qty))
-                    .max(min_slice)
-                    .min(remaining);
+                planned_qty = (planned_qty
+                    * Decimal::from_f64_retain(scale).unwrap_or(planned_qty))
+                .max(min_slice)
+                .min(remaining);
                 tokio::time::sleep(Duration::from_secs(config.retry_delay_secs)).await;
                 continue;
             }
 
             // Adaptive resize based on conditions
             let adapted = adapt_slice_qty(
-                planned_qty, remaining, min_slice, max_slice,
-                est_slip, config.max_slippage_per_slice_bps,
-                current_spread_bps, config.normal_spread_bps,
+                planned_qty,
+                remaining,
+                min_slice,
+                max_slice,
+                est_slip,
+                config.max_slippage_per_slice_bps,
+                current_spread_bps,
+                config.normal_spread_bps,
             );
             if adapted != planned_qty {
                 resized_count += 1;
@@ -691,7 +730,12 @@ pub async fn execute_vwap(
 
             // Risk check
             let check = PreTradeCheck::run(
-                symbol, side, planned_qty, arrival_price, risk_state, risk_limits,
+                symbol,
+                side,
+                planned_qty,
+                arrival_price,
+                risk_state,
+                risk_limits,
             );
             if !check.allowed {
                 status = format!("RISK_SKIP: {:?}", check.reason);
@@ -712,7 +756,10 @@ pub async fn execute_vwap(
                 commission: Decimal::ZERO,
                 is_maker: false,
                 slippage_bps: 0.0,
-                spread_bps: spread_measurements.last().copied().unwrap_or(config.normal_spread_bps),
+                spread_bps: spread_measurements
+                    .last()
+                    .copied()
+                    .unwrap_or(config.normal_spread_bps),
                 volume_weight: vwap_slice.weight,
                 was_resized: false,
                 jitter_secs: jitter,
@@ -734,7 +781,10 @@ pub async fn execute_vwap(
         let fill = if config.limit_first {
             let book = placer.get_orderbook(symbol).await?;
             let limit_price = compute_limit_price(&book, side);
-            match placer.place_limit(symbol, side, planned_qty, limit_price).await {
+            match placer
+                .place_limit(symbol, side, planned_qty, limit_price)
+                .await
+            {
                 Ok(f) => f,
                 Err(_) => {
                     tokio::time::sleep(Duration::from_secs(config.limit_timeout_secs)).await;
@@ -748,7 +798,8 @@ pub async fn execute_vwap(
         // ── Post-slice ────────────────────────────────────────
         let now_ms = start_epoch_ms + start_wall.elapsed().as_millis() as i64;
         let now_secs = now_ms as f64 / 1000.0;
-        let rate = decimal_to_f64(fill.fill_price * fill.fill_qty) / config.interval_secs.max(1) as f64;
+        let rate =
+            decimal_to_f64(fill.fill_price * fill.fill_qty) / config.interval_secs.max(1) as f64;
         transient.record_trade(now_secs, rate);
         transient.prune(now_secs);
 
@@ -766,7 +817,10 @@ pub async fn execute_vwap(
             commission: fill.commission,
             is_maker: fill.is_maker,
             slippage_bps: fill.slippage_bps,
-            spread_bps: spread_measurements.last().copied().unwrap_or(config.normal_spread_bps),
+            spread_bps: spread_measurements
+                .last()
+                .copied()
+                .unwrap_or(config.normal_spread_bps),
             volume_weight: vwap_slice.weight,
             was_resized,
             jitter_secs: jitter,
@@ -780,7 +834,8 @@ pub async fn execute_vwap(
 
         tracing::info!(
             "✅ VWAP slice {}/{}: {} @ {} ({:.1}bps slip, w={:.3}, peak={})",
-            vwap_slice.index + 1, schedule.total_slices,
+            vwap_slice.index + 1,
+            schedule.total_slices,
             slice_records.last().unwrap().filled_qty,
             slice_records.last().unwrap().fill_price,
             slice_records.last().unwrap().slippage_bps,
@@ -791,7 +846,13 @@ pub async fn execute_vwap(
 
     // ── Phase 5: Build report ────────────────────────────────
     let base_report = ExecutionReport::build(
-        symbol, side, "VWAP", total_qty, arrival_price, fills, start_wall,
+        symbol,
+        side,
+        "VWAP",
+        total_qty,
+        arrival_price,
+        fills,
+        start_wall,
     );
 
     // Volume correlation: how well did our execution match volume profile?
@@ -802,8 +863,10 @@ pub async fn execute_vwap(
 
     tracing::info!(
         "📊 VWAP DONE: {} slices | grade={} | IS={:.1}bps | vol_corr={:.3}",
-        base_report.slices_executed, base_report.grade,
-        base_report.is_bps, volume_correlation
+        base_report.slices_executed,
+        base_report.grade,
+        base_report.is_bps,
+        volume_correlation
     );
 
     Ok(VwapReport {
@@ -824,6 +887,7 @@ pub async fn execute_vwap(
 // ═══════════════════════════════════════════════════════════════
 
 /// Adapt slice quantity based on current conditions.
+#[allow(clippy::too_many_arguments)]
 fn adapt_slice_qty(
     planned: Decimal,
     remaining: Decimal,
@@ -837,7 +901,7 @@ fn adapt_slice_qty(
     let mut qty = planned.min(remaining);
 
     if max_slippage_bps > 0.0 && est_slippage_bps > max_slippage_bps * 0.5 {
-        let scale = (1.0 - (est_slippage_bps / max_slippage_bps - 0.5)).max(0.3).min(1.0);
+        let scale = (1.0 - (est_slippage_bps / max_slippage_bps - 0.5)).clamp(0.3, 1.0);
         qty = qty * Decimal::from_f64_retain(scale).unwrap_or(qty);
     }
 
@@ -855,8 +919,12 @@ use crate::utils::compute_jitter;
 /// Compute limit price: buy at bid, sell at ask.
 fn compute_limit_price(book: &crate::orderbook::OrderBookSnapshot, side: Side) -> Decimal {
     match side {
-        Side::Buy => book.best_bid().unwrap_or_else(|| book.mid_price().unwrap_or(Decimal::ONE)),
-        Side::Sell => book.best_ask().unwrap_or_else(|| book.mid_price().unwrap_or(Decimal::ONE)),
+        Side::Buy => book
+            .best_bid()
+            .unwrap_or_else(|| book.mid_price().unwrap_or(Decimal::ONE)),
+        Side::Sell => book
+            .best_ask()
+            .unwrap_or_else(|| book.mid_price().unwrap_or(Decimal::ONE)),
     }
 }
 
@@ -867,7 +935,10 @@ fn compute_volume_correlation(records: &[VwapSliceRecord]) -> f64 {
         return 1.0;
     }
 
-    let filled: Vec<f64> = records.iter().map(|r| decimal_to_f64(r.filled_qty)).collect();
+    let filled: Vec<f64> = records
+        .iter()
+        .map(|r| decimal_to_f64(r.filled_qty))
+        .collect();
     let weights: Vec<f64> = records.iter().map(|r| r.volume_weight).collect();
 
     let n = filled.len() as f64;
@@ -908,12 +979,17 @@ mod tests {
             .map(|h| {
                 serde_json::json!([
                     (h as i64) * 3_600_000, // open_time
-                    "100", "101", "99", "100.5",
-                    "1000", // volume
-                    (h as i64 + 1) * 3_600_000, // close_time
+                    "100",
+                    "101",
+                    "99",
+                    "100.5",
+                    "1000",                        // volume
+                    (h as i64 + 1) * 3_600_000,    // close_time
                     format!("{}", (h + 1) * 1000), // quote vol: 1K, 2K, ..., 24K
-                    (h + 1) * 100, // trade count
-                    "0", "0", "0"
+                    (h + 1) * 100,                 // trade count
+                    "0",
+                    "0",
+                    "0"
                 ])
             })
             .collect();
@@ -925,7 +1001,10 @@ mod tests {
 
         // Total volume = sum(1..=24) * 1000 = 300000
         let total_w: f64 = profile.buckets.iter().map(|b| b.weight).sum();
-        assert!((total_w - 1.0).abs() < 0.001, "weights should sum to 1.0: got {total_w}");
+        assert!(
+            (total_w - 1.0).abs() < 0.001,
+            "weights should sum to 1.0: got {total_w}"
+        );
 
         // Hour 23 should have highest weight (24K / 300K = 0.08)
         assert!(profile.buckets[23].weight > profile.buckets[0].weight);
@@ -937,8 +1016,18 @@ mod tests {
             .map(|h| {
                 let vol = if h == 8 { "10000" } else { "100" }; // hour 8 = peak
                 serde_json::json!([
-                    (h as i64) * 3_600_000, "100", "101", "99", "100.5",
-                    "1000", (h as i64 + 1) * 3_600_000, vol, "100", "0", "0", "0"
+                    (h as i64) * 3_600_000,
+                    "100",
+                    "101",
+                    "99",
+                    "100.5",
+                    "1000",
+                    (h as i64 + 1) * 3_600_000,
+                    vol,
+                    "100",
+                    "0",
+                    "0",
+                    "0"
                 ])
             })
             .collect();
@@ -948,7 +1037,10 @@ mod tests {
         // Hour 8 should dominate
         let h8_weight = profile.weight_for_hour(8);
         let h0_weight = profile.weight_for_hour(0);
-        assert!(h8_weight > h0_weight * 10.0, "h8={h8_weight} should be >> h0={h0_weight}");
+        assert!(
+            h8_weight > h0_weight * 10.0,
+            "h8={h8_weight} should be >> h0={h0_weight}"
+        );
     }
 
     #[test]
@@ -967,10 +1059,18 @@ mod tests {
         let klines: Vec<serde_json::Value> = (0..24)
             .map(|h| {
                 serde_json::json!([
-                    (h as i64) * 3_600_000, "100", "101", "99", "100.5",
-                    "1000", (h as i64 + 1) * 3_600_000,
+                    (h as i64) * 3_600_000,
+                    "100",
+                    "101",
+                    "99",
+                    "100.5",
+                    "1000",
+                    (h as i64 + 1) * 3_600_000,
                     format!("{}", 1000 + h * 100), // increasing volume
-                    "100", "0", "0", "0"
+                    "100",
+                    "0",
+                    "0",
+                    "0"
                 ])
             })
             .collect();
@@ -1002,8 +1102,18 @@ mod tests {
             .map(|h| {
                 let vol = if h == 12 { "50000" } else { "1000" };
                 serde_json::json!([
-                    (h as i64) * 3_600_000, "100", "101", "99", "100.5",
-                    "1000", (h as i64 + 1) * 3_600_000, vol, "100", "0", "0", "0"
+                    (h as i64) * 3_600_000,
+                    "100",
+                    "101",
+                    "99",
+                    "100.5",
+                    "1000",
+                    (h as i64 + 1) * 3_600_000,
+                    vol,
+                    "100",
+                    "0",
+                    "0",
+                    "0"
                 ])
             })
             .collect();
@@ -1013,16 +1123,23 @@ mod tests {
         // Debug: print peak weight
         let h12_weight = profile.weight_for_hour(12);
         let h0_weight = profile.weight_for_hour(0);
-        assert!(h12_weight > h0_weight * 10.0, "h12={h12_weight} should dominate h0={h0_weight}");
-
-        let schedule = VwapSchedule::build(
-            &profile, Decimal::from(1000), 10, 60, false,
+        assert!(
+            h12_weight > h0_weight * 10.0,
+            "h12={h12_weight} should dominate h0={h0_weight}"
         );
+
+        let schedule = VwapSchedule::build(&profile, Decimal::from(1000), 10, 60, false);
 
         // At least one slice should be marked as peak
         let peaks: Vec<_> = schedule.slices.iter().filter(|s| s.is_peak).collect();
-        assert!(!peaks.is_empty(), "should detect peak slices: {:?}",
-            schedule.slices.iter().map(|s| (s.weight, s.is_peak)).collect::<Vec<_>>()
+        assert!(
+            !peaks.is_empty(),
+            "should detect peak slices: {:?}",
+            schedule
+                .slices
+                .iter()
+                .map(|s| (s.weight, s.is_peak))
+                .collect::<Vec<_>>()
         );
     }
 
@@ -1057,9 +1174,14 @@ mod tests {
     #[test]
     fn test_adapt_normal_conditions() {
         let qty = adapt_slice_qty(
-            Decimal::from(100), Decimal::from(500),
-            Decimal::from(10), Decimal::from(200),
-            1.0, 5.0, 2.0, 2.0,
+            Decimal::from(100),
+            Decimal::from(500),
+            Decimal::from(10),
+            Decimal::from(200),
+            1.0,
+            5.0,
+            2.0,
+            2.0,
         );
         assert_eq!(qty, Decimal::from(100));
     }
@@ -1067,9 +1189,14 @@ mod tests {
     #[test]
     fn test_adapt_high_slippage_reduces() {
         let qty = adapt_slice_qty(
-            Decimal::from(100), Decimal::from(500),
-            Decimal::from(10), Decimal::from(200),
-            4.0, 5.0, 2.0, 2.0,
+            Decimal::from(100),
+            Decimal::from(500),
+            Decimal::from(10),
+            Decimal::from(200),
+            4.0,
+            5.0,
+            2.0,
+            2.0,
         );
         assert!(qty < Decimal::from(100));
         assert!(qty >= Decimal::from(10));
@@ -1078,9 +1205,14 @@ mod tests {
     #[test]
     fn test_adapt_wide_spread_reduces() {
         let qty = adapt_slice_qty(
-            Decimal::from(100), Decimal::from(500),
-            Decimal::from(10), Decimal::from(200),
-            1.0, 5.0, 6.0, 2.0,
+            Decimal::from(100),
+            Decimal::from(500),
+            Decimal::from(10),
+            Decimal::from(200),
+            1.0,
+            5.0,
+            6.0,
+            2.0,
         );
         assert!(qty < Decimal::from(100));
     }
@@ -1119,25 +1251,44 @@ mod tests {
             VwapSliceRecord {
                 filled_qty: Decimal::from(500),
                 volume_weight: 0.05,
-                planned_qty: Decimal::ZERO, fill_price: Decimal::ONE,
-                commission: Decimal::ZERO, is_maker: false, slippage_bps: 0.0,
-                spread_bps: 2.0, was_resized: false, jitter_secs: 0.0,
-                is_peak: false, status: "FILLED".into(), timestamp_ms: 0,
-                retries: 0, index: 0,
+                planned_qty: Decimal::ZERO,
+                fill_price: Decimal::ONE,
+                commission: Decimal::ZERO,
+                is_maker: false,
+                slippage_bps: 0.0,
+                spread_bps: 2.0,
+                was_resized: false,
+                jitter_secs: 0.0,
+                is_peak: false,
+                status: "FILLED".into(),
+                timestamp_ms: 0,
+                retries: 0,
+                index: 0,
             },
             VwapSliceRecord {
                 filled_qty: Decimal::from(50),
                 volume_weight: 0.45,
-                planned_qty: Decimal::ZERO, fill_price: Decimal::ONE,
-                commission: Decimal::ZERO, is_maker: false, slippage_bps: 0.0,
-                spread_bps: 2.0, was_resized: false, jitter_secs: 0.0,
-                is_peak: false, status: "FILLED".into(), timestamp_ms: 0,
-                retries: 0, index: 1,
+                planned_qty: Decimal::ZERO,
+                fill_price: Decimal::ONE,
+                commission: Decimal::ZERO,
+                is_maker: false,
+                slippage_bps: 0.0,
+                spread_bps: 2.0,
+                was_resized: false,
+                jitter_secs: 0.0,
+                is_peak: false,
+                status: "FILLED".into(),
+                timestamp_ms: 0,
+                retries: 0,
+                index: 1,
             },
         ];
 
         let corr = compute_volume_correlation(&records);
-        assert!(corr < 0.0, "inverse correlation should be negative, got {corr}");
+        assert!(
+            corr < 0.0,
+            "inverse correlation should be negative, got {corr}"
+        );
     }
 
     // ── Serialization Test ───────────────────────────────────

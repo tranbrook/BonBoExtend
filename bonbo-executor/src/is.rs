@@ -42,7 +42,6 @@ use crate::twap::SimpleRng;
 use crate::utils::decimal_to_f64;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use std::str::FromStr;
 use std::time::{Duration, Instant};
 
 // ═══════════════════════════════════════════════════════════════
@@ -193,15 +192,15 @@ impl OptimalTrajectory {
 
         // Compute slice fractions using Almgren-Chriss trajectory
         let slice_fractions = if kappa > 0.0001 && slices > 1 {
-            let kT = kappa * optimal_time_hours;
-            let sinh_kT = kT.sinh();
-            if sinh_kT.abs() > 1e-10 {
+            let k_t = kappa * optimal_time_hours;
+            let sinh_k_t = k_t.sinh();
+            if sinh_k_t.abs() > 1e-10 {
                 (0..slices)
                     .map(|i| {
                         let t_start = i as f64 / slices as f64 * optimal_time_hours;
                         let t_end = (i + 1) as f64 / slices as f64 * optimal_time_hours;
-                        let x_start = (kappa * (optimal_time_hours - t_start)).sinh() / sinh_kT;
-                        let x_end = (kappa * (optimal_time_hours - t_end)).sinh() / sinh_kT;
+                        let x_start = (kappa * (optimal_time_hours - t_start)).sinh() / sinh_k_t;
+                        let x_end = (kappa * (optimal_time_hours - t_end)).sinh() / sinh_k_t;
                         (x_start - x_end).max(0.0)
                     })
                     .collect()
@@ -223,12 +222,8 @@ impl OptimalTrajectory {
         };
 
         // IS decomposition
-        let is_decomp = IsDecomposition::compute(
-            params,
-            order_notional_usd,
-            optimal_time_hours,
-            fee_rate,
-        );
+        let is_decomp =
+            IsDecomposition::compute(params, order_notional_usd, optimal_time_hours, fee_rate);
 
         // Sub-algorithm recommendation
         let sub_algo = select_sub_algo(participation, normalized.first().copied().unwrap_or(0.1));
@@ -428,6 +423,7 @@ pub struct IsReport {
 /// * `impact_params` — Market impact parameters
 /// * `risk_state` — Cumulative risk state
 /// * `risk_limits` — Per-execution risk limits
+#[allow(clippy::too_many_arguments)]
 pub async fn execute_is(
     placer: &dyn OrderPlacer,
     symbol: &str,
@@ -467,13 +463,20 @@ pub async fn execute_is(
 
     tracing::info!(
         "📊 IS PLAN: {} {:?} {} | κ={:.4} T*={:.1}h slices={} sub={}",
-        symbol, side, total_qty, trajectory.kappa,
-        trajectory.optimal_time_hours, trajectory.slices, trajectory.sub_algo,
+        symbol,
+        side,
+        total_qty,
+        trajectory.kappa,
+        trajectory.optimal_time_hours,
+        trajectory.slices,
+        trajectory.sub_algo,
     );
     tracing::info!(
         "   Expected IS: {:.1}bps (temp={:.1} + perm={:.1}) | IS@95%: {:.1}bps | risk 1σ: {:.1}bps",
-        planned_is.expected_is_bps, planned_is.temporary_impact_bps,
-        planned_is.permanent_impact_bps, planned_is.is_95_bps,
+        planned_is.expected_is_bps,
+        planned_is.temporary_impact_bps,
+        planned_is.permanent_impact_bps,
+        planned_is.is_95_bps,
         planned_is.timing_risk_bps,
     );
 
@@ -482,7 +485,12 @@ pub async fn execute_is(
     let arrival_price = initial_book.mid_price().unwrap_or(decision_price);
 
     let pre_check = PreTradeCheck::run(
-        symbol, side, total_qty, arrival_price, risk_state, risk_limits,
+        symbol,
+        side,
+        total_qty,
+        arrival_price,
+        risk_state,
+        risk_limits,
     );
     if !pre_check.allowed {
         anyhow::bail!("IS pre-trade check failed: {:?}", pre_check.reason);
@@ -513,8 +521,12 @@ pub async fn execute_is(
 
             // Check adverse drift
             let drift_bps = match side {
-                Side::Buy => decimal_to_f64((current_mid - decision_price) / decision_price) * 10_000.0,
-                Side::Sell => decimal_to_f64((decision_price - current_mid) / decision_price) * 10_000.0,
+                Side::Buy => {
+                    decimal_to_f64((current_mid - decision_price) / decision_price) * 10_000.0
+                }
+                Side::Sell => {
+                    decimal_to_f64((decision_price - current_mid) / decision_price) * 10_000.0
+                }
             };
 
             if drift_bps < -config.adverse_drift_threshold_bps {
@@ -538,7 +550,8 @@ pub async fn execute_is(
 
                 tracing::warn!(
                     "⚠️ IS adverse drift: {:.1}bps (threshold {:.1}bps) → speeding up",
-                    drift_bps, config.adverse_drift_threshold_bps,
+                    drift_bps,
+                    config.adverse_drift_threshold_bps,
                 );
             }
 
@@ -561,7 +574,11 @@ pub async fn execute_is(
         }
 
         // ── Compute slice quantity ───────────────────────────
-        let frac = trajectory.slice_fractions.get(i).copied().unwrap_or(1.0 / trajectory.slices as f64);
+        let frac = trajectory
+            .slice_fractions
+            .get(i)
+            .copied()
+            .unwrap_or(1.0 / trajectory.slices as f64);
         let mut slice_qty = total_qty * Decimal::from_f64_retain(frac).unwrap_or(Decimal::ZERO);
         slice_qty = slice_qty.min(remaining);
         slice_qty = slice_qty.max(Decimal::ZERO);
@@ -579,6 +596,7 @@ pub async fn execute_is(
 
         // ── Pre-slice checks ─────────────────────────────────
         let mut retries = 0usize;
+        #[allow(unused_assignments)]
         let mut status = "SCHEDULED".to_string();
 
         loop {
@@ -682,7 +700,8 @@ pub async fn execute_is(
 
         tracing::info!(
             "✅ IS slice {}/{}: {} @ {} (cumIS={:.1}bps, frac={:.1}%, re={}, drift={})",
-            i + 1, trajectory.slices,
+            i + 1,
+            trajectory.slices,
             slice_records.last().unwrap().filled_qty,
             slice_records.last().unwrap().fill_price,
             cumulative_is,
@@ -694,7 +713,13 @@ pub async fn execute_is(
 
     // ── Phase 4: Build report ────────────────────────────────
     let base_report = ExecutionReport::build(
-        symbol, side, "IS", total_qty, decision_price, fills.clone(), start_wall,
+        symbol,
+        side,
+        "IS",
+        total_qty,
+        decision_price,
+        fills.clone(),
+        start_wall,
     );
 
     let actual_is = base_report.is_bps;
@@ -711,8 +736,11 @@ pub async fn execute_is(
 
     tracing::info!(
         "📊 IS DONE: grade={} | actual={:.1}bps | planned={:.1}bps | efficiency={:.2} | savings vs TWAP={:+.1}bps",
-        base_report.grade, actual_is, planned_is.expected_is_bps,
-        is_efficiency, savings,
+        base_report.grade,
+        actual_is,
+        planned_is.expected_is_bps,
+        is_efficiency,
+        savings,
     );
 
     Ok(IsReport {
@@ -755,15 +783,17 @@ fn compute_cumulative_is(fills: &[FillResult], decision_price: Decimal, side: Si
     }
 }
 
-
-
 /// Compute VWAP from fills.
 fn decimal_to_f64_arrival(fills: &[FillResult], fallback: Decimal) -> Decimal {
     let filled: Decimal = fills.iter().map(|f| f.fill_qty).sum();
     if filled <= Decimal::ZERO {
         return fallback;
     }
-    fills.iter().map(|f| f.fill_price * f.fill_qty).sum::<Decimal>() / filled
+    fills
+        .iter()
+        .map(|f| f.fill_price * f.fill_qty)
+        .sum::<Decimal>()
+        / filled
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -773,6 +803,7 @@ fn decimal_to_f64_arrival(fills: &[FillResult], fallback: Decimal) -> Decimal {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
 
     // ── IS Decomposition Tests ───────────────────────────────
 
@@ -781,11 +812,23 @@ mod tests {
         let params = ImpactParams::seiusdt();
         let decomp = IsDecomposition::compute(&params, 10_000.0, 0.5, 0.0005);
 
-        assert!(decomp.temporary_impact_bps > 0.0, "temp impact should be positive");
-        assert!(decomp.permanent_impact_bps > 0.0, "perm impact should be positive");
-        assert!(decomp.timing_risk_bps > 0.0, "timing risk should be positive");
+        assert!(
+            decomp.temporary_impact_bps > 0.0,
+            "temp impact should be positive"
+        );
+        assert!(
+            decomp.permanent_impact_bps > 0.0,
+            "perm impact should be positive"
+        );
+        assert!(
+            decomp.timing_risk_bps > 0.0,
+            "timing risk should be positive"
+        );
         assert!(decomp.expected_is_bps > 0.0);
-        assert!(decomp.is_95_bps > decomp.expected_is_bps, "95% IS > expected");
+        assert!(
+            decomp.is_95_bps > decomp.expected_is_bps,
+            "95% IS > expected"
+        );
         assert!(decomp.is_99_bps > decomp.is_95_bps, "99% IS > 95% IS");
         assert!((decomp.fee_bps - 5.0).abs() < 0.1, "fee should be 5bps");
     }
@@ -799,8 +842,12 @@ mod tests {
         let btc_is = IsDecomposition::compute(&btc, 10_000.0, 0.5, 0.0004);
 
         // BTC should have lower IS for same $ notional
-        assert!(btc_is.expected_is_bps < sei_is.expected_is_bps,
-            "BTC IS ({}) should be < SEI IS ({})", btc_is.expected_is_bps, sei_is.expected_is_bps);
+        assert!(
+            btc_is.expected_is_bps < sei_is.expected_is_bps,
+            "BTC IS ({}) should be < SEI IS ({})",
+            btc_is.expected_is_bps,
+            sei_is.expected_is_bps
+        );
     }
 
     #[test]
@@ -842,7 +889,10 @@ mod tests {
         assert!(traj.slices >= 5, "high risk should have many slices");
         // Fractions should sum to 1.0
         let total: f64 = traj.slice_fractions.iter().sum();
-        assert!((total - 1.0).abs() < 0.01, "fractions should sum to 1.0: got {total}");
+        assert!(
+            (total - 1.0).abs() < 0.01,
+            "fractions should sum to 1.0: got {total}"
+        );
     }
 
     #[test]
@@ -857,8 +907,10 @@ mod tests {
             // For high risk aversion, trajectory is front-loaded
             // (first > last when κ is significant)
             // Note: for small κ the difference may be tiny
-            assert!(first >= last * 0.9,
-                "front-loaded: first={first} should be >= last={last}");
+            assert!(
+                first >= last * 0.9,
+                "front-loaded: first={first} should be >= last={last}"
+            );
         }
     }
 
@@ -932,9 +984,7 @@ mod tests {
 
     #[test]
     fn test_is_decomposition_serialization() {
-        let decomp = IsDecomposition::compute(
-            &ImpactParams::seiusdt(), 10_000.0, 0.5, 0.0005,
-        );
+        let decomp = IsDecomposition::compute(&ImpactParams::seiusdt(), 10_000.0, 0.5, 0.0005);
         let json = serde_json::to_string(&decomp).unwrap();
         let back: IsDecomposition = serde_json::from_str(&json).unwrap();
         assert!((back.expected_is_bps - decomp.expected_is_bps).abs() < 0.001);

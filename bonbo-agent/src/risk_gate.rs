@@ -37,17 +37,16 @@ impl RiskGate {
     }
 
     /// Validate a trade against all risk rules.
-    pub async fn validate(
-        &self,
-        trade: &TradeParams,
-        tracker: &PositionTracker,
-    ) -> RiskGateResult {
+    pub async fn validate(&self, trade: &TradeParams, tracker: &PositionTracker) -> RiskGateResult {
         // Rule 1: Max open positions
         let open = tracker.open_count().await;
         if open >= self.config.risk.max_open_positions as usize {
             return RiskGateResult {
                 approved: false,
-                reason: format!("Max positions reached ({}/{})", open, self.config.risk.max_open_positions),
+                reason: format!(
+                    "Max positions reached ({}/{})",
+                    open, self.config.risk.max_open_positions
+                ),
                 adjusted_quantity: None,
             };
         }
@@ -56,7 +55,10 @@ impl RiskGate {
         if self.daily_trades >= self.config.risk.max_daily_trades {
             return RiskGateResult {
                 approved: false,
-                reason: format!("Daily trade limit reached ({}/{})", self.daily_trades, self.config.risk.max_daily_trades),
+                reason: format!(
+                    "Daily trade limit reached ({}/{})",
+                    self.daily_trades, self.config.risk.max_daily_trades
+                ),
                 adjusted_quantity: None,
             };
         }
@@ -67,21 +69,30 @@ impl RiskGate {
         } else {
             Decimal::ZERO
         };
-        if daily_loss_pct > Decimal::from(self.config.risk.daily_loss_limit_pct) && self.daily_pnl < Decimal::ZERO {
+        if daily_loss_pct > Decimal::from(self.config.risk.daily_loss_limit_pct)
+            && self.daily_pnl < Decimal::ZERO
+        {
             return RiskGateResult {
                 approved: false,
-                reason: format!("Daily loss limit exceeded ({:.2}%/{:.0}%)", daily_loss_pct, self.config.risk.daily_loss_limit_pct),
+                reason: format!(
+                    "Daily loss limit exceeded ({:.2}%/{:.0}%)",
+                    daily_loss_pct, self.config.risk.daily_loss_limit_pct
+                ),
                 adjusted_quantity: None,
             };
         }
 
         // Rule 4: Max drawdown
         if self.peak_equity > Decimal::ZERO {
-            let drawdown_pct = (self.peak_equity - self.current_equity) / self.peak_equity * Decimal::ONE_HUNDRED;
+            let drawdown_pct =
+                (self.peak_equity - self.current_equity) / self.peak_equity * Decimal::ONE_HUNDRED;
             if drawdown_pct > Decimal::from(self.config.risk.max_drawdown_pct) {
                 return RiskGateResult {
                     approved: false,
-                    reason: format!("Max drawdown exceeded ({:.2}%/{:.0}%)", drawdown_pct, self.config.risk.max_drawdown_pct),
+                    reason: format!(
+                        "Max drawdown exceeded ({:.2}%/{:.0}%)",
+                        drawdown_pct, self.config.risk.max_drawdown_pct
+                    ),
                     adjusted_quantity: None,
                 };
             }
@@ -103,20 +114,27 @@ impl RiskGate {
         if rr < min_rr {
             return RiskGateResult {
                 approved: false,
-                reason: format!("R:R too low ({:.2}/{:.1})", rr, self.config.risk.min_risk_reward),
+                reason: format!(
+                    "R:R too low ({:.2}/{:.1})",
+                    rr, self.config.risk.min_risk_reward
+                ),
                 adjusted_quantity: None,
             };
         }
 
         // Rule 7: Max position size (% of equity)
-        let max_pos = self.current_equity * Decimal::from(self.config.risk.max_position_pct) / Decimal::ONE_HUNDRED;
+        let max_pos = self.current_equity * Decimal::from(self.config.risk.max_position_pct)
+            / Decimal::ONE_HUNDRED;
         let notional = trade.quantity * trade.entry_price;
         if notional > max_pos {
             // Adjust quantity to fit limit
             let adjusted = max_pos / trade.entry_price;
             return RiskGateResult {
                 approved: true,
-                reason: format!("Quantity adjusted: notional ${:.0} > max ${:.0}", notional, max_pos),
+                reason: format!(
+                    "Quantity adjusted: notional ${:.0} > max ${:.0}",
+                    notional, max_pos
+                ),
                 adjusted_quantity: Some(adjusted.round_dp(4)),
             };
         }

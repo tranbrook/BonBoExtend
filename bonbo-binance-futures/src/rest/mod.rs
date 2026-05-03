@@ -10,9 +10,9 @@ pub use algo_orders::AlgoOrdersClient;
 pub use market::MarketClient;
 pub use orders::OrdersClient;
 
+use crate::FuturesConfig;
 use crate::auth::Auth;
 use crate::rate_limiter::RateLimiter;
-use crate::FuturesConfig;
 
 /// Shared HTTP client and configuration.
 #[derive(Debug, Clone)]
@@ -92,7 +92,11 @@ impl FuturesRestClient {
     }
 
     /// Send a signed DELETE request.
-    pub async fn delete_signed(&self, path: &str, params: &str) -> anyhow::Result<serde_json::Value> {
+    pub async fn delete_signed(
+        &self,
+        path: &str,
+        params: &str,
+    ) -> anyhow::Result<serde_json::Value> {
         let query = self.auth.signed_query(params, 5000);
         let url = format!("{}{}?{}", self.base_url, path, query);
 
@@ -142,12 +146,20 @@ impl FuturesRestClient {
         let status = resp.status();
         let body = resp.text().await?;
 
-        let value: serde_json::Value = serde_json::from_str(&body)
-            .map_err(|e| anyhow::anyhow!("Failed to parse JSON: {} — body: {}", e, &body[..body.len().min(500)]))?;
+        let value: serde_json::Value = serde_json::from_str(&body).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to parse JSON: {} — body: {}",
+                e,
+                &body[..body.len().min(500)]
+            )
+        })?;
 
         if !status.is_success() {
             let code = value.get("code").and_then(|v| v.as_i64()).unwrap_or(0);
-            let msg = value.get("msg").and_then(|v| v.as_str()).unwrap_or("Unknown error");
+            let msg = value
+                .get("msg")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown error");
             return Err(anyhow::anyhow!("Binance API error: {} — {}", code, msg));
         }
 

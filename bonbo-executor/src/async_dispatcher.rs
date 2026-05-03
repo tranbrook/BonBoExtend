@@ -65,7 +65,7 @@ use crate::orderbook::Side;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tokio::sync::{Semaphore, oneshot};
+use tokio::sync::Semaphore;
 use tokio::task::JoinHandle;
 
 // ═══════════════════════════════════════════════════════════════
@@ -163,6 +163,7 @@ pub struct OrderRateGate {
     /// Minimum interval between consecutive orders (ms).
     min_interval_ms: u64,
     /// Maximum orders per second.
+    #[allow(dead_code)]
     max_per_sec: u32,
     /// Semaphore controlling concurrency.
     semaphore: Arc<Semaphore>,
@@ -270,9 +271,12 @@ impl AsyncOrderDispatcher {
                 OrderTask::Market { symbol, side, qty } => {
                     placer.place_market(symbol, *side, *qty).await
                 }
-                OrderTask::Limit { symbol, side, qty, price } => {
-                    placer.place_limit(symbol, *side, *qty, *price).await
-                }
+                OrderTask::Limit {
+                    symbol,
+                    side,
+                    qty,
+                    price,
+                } => placer.place_limit(symbol, *side, *qty, *price).await,
             };
 
             let latency_ms = start.elapsed().as_millis() as u64;
@@ -338,6 +342,7 @@ impl AsyncOrderDispatcher {
 pub struct ConcurrentSliceExecutor {
     dispatcher: AsyncOrderDispatcher,
     /// Per-order timeout.
+    #[allow(dead_code)]
     order_timeout: std::time::Duration,
     /// Maximum retries per slice.
     max_retries: usize,
@@ -545,9 +550,12 @@ impl ConcurrentSliceExecutor {
                         OrderTask::Market { symbol, side, qty } => {
                             placer.place_market(symbol, *side, *qty).await
                         }
-                        OrderTask::Limit { symbol, side, qty, price } => {
-                            placer.place_limit(symbol, *side, *qty, *price).await
-                        }
+                        OrderTask::Limit {
+                            symbol,
+                            side,
+                            qty,
+                            price,
+                        } => placer.place_limit(symbol, *side, *qty, *price).await,
                     };
 
                     let latency_ms = start.elapsed().as_millis() as u64;
@@ -599,18 +607,27 @@ mod tests {
 
     impl MockPlacer {
         fn new(delay_ms: u64) -> Self {
-            Self { delay_ms, fail_rate: 0.0 }
+            Self {
+                delay_ms,
+                fail_rate: 0.0,
+            }
         }
 
         fn with_fail_rate(delay_ms: u64, fail_rate: f64) -> Self {
-            Self { delay_ms, fail_rate }
+            Self {
+                delay_ms,
+                fail_rate,
+            }
         }
     }
 
     #[async_trait::async_trait]
     impl OrderPlacer for MockPlacer {
         async fn place_market(
-            &self, symbol: &str, side: Side, qty: Decimal,
+            &self,
+            symbol: &str,
+            side: Side,
+            qty: Decimal,
         ) -> anyhow::Result<FillResult> {
             tokio::time::sleep(std::time::Duration::from_millis(self.delay_ms)).await;
 
@@ -633,7 +650,11 @@ mod tests {
         }
 
         async fn place_limit(
-            &self, symbol: &str, side: Side, qty: Decimal, price: Decimal,
+            &self,
+            symbol: &str,
+            side: Side,
+            qty: Decimal,
+            price: Decimal,
         ) -> anyhow::Result<FillResult> {
             tokio::time::sleep(std::time::Duration::from_millis(self.delay_ms)).await;
 
@@ -795,7 +816,11 @@ mod tests {
         assert_eq!(batch.successful, 5);
         assert_eq!(batch.failed, 0);
         assert_eq!(batch.total_filled_qty, Decimal::from(50));
-        assert!(batch.total_time_ms < 1000, "should be fast: {}ms", batch.total_time_ms);
+        assert!(
+            batch.total_time_ms < 1000,
+            "should be fast: {}ms",
+            batch.total_time_ms
+        );
     }
 
     #[tokio::test]
@@ -823,7 +848,12 @@ mod tests {
         assert_eq!(batch.total_dispatched, 5);
         assert!(batch.successful + batch.failed == 5);
         // At least some should succeed (A=0.15, B=0.46, C=0.77, D=0.08, E=0.55)
-        assert!(batch.successful >= 1, "at least 1 should succeed: {}/{}", batch.successful, batch.total_dispatched);
+        assert!(
+            batch.successful >= 1,
+            "at least 1 should succeed: {}/{}",
+            batch.successful,
+            batch.total_dispatched
+        );
     }
 
     #[tokio::test]
@@ -848,7 +878,9 @@ mod tests {
         while let Some(result) = rx.recv().await {
             assert!(result.is_ok());
             count += 1;
-            if count >= 3 { break; }
+            if count >= 3 {
+                break;
+            }
         }
         assert_eq!(count, 3);
     }

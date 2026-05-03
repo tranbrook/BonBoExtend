@@ -43,10 +43,10 @@ impl LiquidationCalculator {
     pub fn maint_margin_rate(symbol: &str) -> Decimal {
         // Conservative estimates based on Binance tiers
         match symbol {
-            "BTCUSDT" => Decimal::new(4, 3),  // 0.4%
-            "ETHUSDT" => Decimal::new(5, 3),  // 0.5%
-            "BNBUSDT" => Decimal::new(5, 3),  // 0.5%
-            _ => Decimal::new(10, 3),          // 1.0% (conservative)
+            "BTCUSDT" => Decimal::new(4, 3), // 0.4%
+            "ETHUSDT" => Decimal::new(5, 3), // 0.5%
+            "BNBUSDT" => Decimal::new(5, 3), // 0.5%
+            _ => Decimal::new(10, 3),        // 1.0% (conservative)
         }
     }
 

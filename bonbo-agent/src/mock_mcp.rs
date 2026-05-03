@@ -35,7 +35,13 @@ impl Default for MockMcpClient {
                 macd_signal: Some("BUY".to_string()),
                 ema_cross: Some("BULLISH".to_string()),
                 hurst: Some(0.68),
+                hurst_short: Some(0.62),
+                hurst_divergence: None,
                 laguerre_rsi: Some(0.65),
+                laguerre_rsi_fast: Some(0.70),
+                laguerre_divergence: Some(0.05),
+                atr_14: Some(1200.0),
+                adx: Some(28.0),
                 buy_signals: 5,
                 sell_signals: 1,
                 total_signals: 6,
@@ -71,19 +77,28 @@ impl McpClient for MockMcpClient {
         symbol: &str,
         timeframe: &str,
     ) -> anyhow::Result<IndicatorResult> {
-        let mut result = self.indicator_result.clone().unwrap_or_else(|| IndicatorResult {
-            symbol: symbol.to_string(),
-            timeframe: timeframe.to_string(),
-            rsi_14: None,
-            macd_signal: None,
-            ema_cross: None,
-            hurst: None,
-            laguerre_rsi: None,
-            buy_signals: 0,
-            sell_signals: 0,
-            total_signals: 0,
-            score: 0,
-        });
+        let mut result = self
+            .indicator_result
+            .clone()
+            .unwrap_or_else(|| IndicatorResult {
+                symbol: symbol.to_string(),
+                timeframe: timeframe.to_string(),
+                rsi_14: None,
+                macd_signal: None,
+                ema_cross: None,
+                hurst: None,
+                hurst_short: None,
+                hurst_divergence: None,
+                laguerre_rsi: None,
+                laguerre_rsi_fast: None,
+                laguerre_divergence: None,
+                atr_14: None,
+                adx: None,
+                buy_signals: 0,
+                sell_signals: 0,
+                total_signals: 0,
+                score: 0,
+            });
         result.symbol = symbol.to_string();
         result.timeframe = timeframe.to_string();
         Ok(result)
@@ -104,10 +119,15 @@ impl McpClient for MockMcpClient {
         symbol: &str,
         _timeframe: &str,
     ) -> anyhow::Result<Vec<TradingSignal>> {
-        Ok(self.trading_signals.iter().cloned().map(|mut s| {
-            s.symbol = symbol.to_string();
-            s
-        }).collect())
+        Ok(self
+            .trading_signals
+            .iter()
+            .cloned()
+            .map(|mut s| {
+                s.symbol = symbol.to_string();
+                s
+            })
+            .collect())
     }
 
     async fn get_funding_rate(&self, _symbol: &str) -> anyhow::Result<Decimal> {

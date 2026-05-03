@@ -1,10 +1,12 @@
 //! Built-in tools provided by bonbo-extend.
 
 pub mod backtest;
+pub mod derivatives;
 pub mod journal;
 pub mod learning;
 pub mod market_data;
 pub mod portfolio;
+pub mod position_analyzer;
 pub mod price_alert;
 pub mod regime;
 pub mod risk;
@@ -17,10 +19,12 @@ pub mod validation;
 
 // Re-export concrete plugin types
 pub use backtest::BacktestPlugin;
+pub use derivatives::DerivativesPlugin;
 pub use journal::JournalPlugin;
 pub use learning::LearningPlugin;
 pub use market_data::MarketDataPlugin;
 pub use portfolio::PortfolioPlugin;
+pub use position_analyzer::PositionAnalyzerPlugin;
 pub use price_alert::PriceAlertPlugin;
 pub use regime::RegimePlugin;
 pub use risk::RiskPlugin;

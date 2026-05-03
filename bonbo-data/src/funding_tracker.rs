@@ -1,9 +1,9 @@
 //! Funding rate tracker — maintains history and generates alerts.
 
+use rust_decimal::Decimal;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use rust_decimal::Decimal;
 
 /// Funding rate record.
 #[derive(Debug, Clone)]
@@ -51,7 +51,9 @@ impl FundingTracker {
         if rate.abs() > self.alert_threshold {
             tracing::warn!(
                 "⚠️ High funding rate: {} = {:.4}% (threshold: {:.2}%)",
-                symbol, rate * Decimal::ONE_HUNDRED, self.alert_threshold * Decimal::ONE_HUNDRED
+                symbol,
+                rate * Decimal::ONE_HUNDRED,
+                self.alert_threshold * Decimal::ONE_HUNDRED
             );
         }
     }

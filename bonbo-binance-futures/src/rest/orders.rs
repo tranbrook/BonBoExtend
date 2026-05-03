@@ -8,7 +8,10 @@ pub struct OrdersClient;
 
 impl OrdersClient {
     /// Place a new order.
-    pub async fn place_order(client: &FuturesRestClient, order: &NewOrderRequest) -> anyhow::Result<OrderResponse> {
+    pub async fn place_order(
+        client: &FuturesRestClient,
+        order: &NewOrderRequest,
+    ) -> anyhow::Result<OrderResponse> {
         client.rate_limiter().check_order().await;
         let params = order.to_query();
         let value = client.post_signed("/fapi/v1/order", &params).await?;
@@ -18,45 +21,87 @@ impl OrdersClient {
     }
 
     /// Place a MARKET BUY order.
-    pub async fn market_buy(client: &FuturesRestClient, symbol: &str, quantity: Decimal) -> anyhow::Result<OrderResponse> {
+    pub async fn market_buy(
+        client: &FuturesRestClient,
+        symbol: &str,
+        quantity: Decimal,
+    ) -> anyhow::Result<OrderResponse> {
         let order = NewOrderRequest::market(symbol, Side::Buy, quantity);
         Self::place_order(client, &order).await
     }
 
     /// Place a MARKET SELL order.
-    pub async fn market_sell(client: &FuturesRestClient, symbol: &str, quantity: Decimal) -> anyhow::Result<OrderResponse> {
+    pub async fn market_sell(
+        client: &FuturesRestClient,
+        symbol: &str,
+        quantity: Decimal,
+    ) -> anyhow::Result<OrderResponse> {
         let order = NewOrderRequest::market(symbol, Side::Sell, quantity);
         Self::place_order(client, &order).await
     }
 
     /// Place a LIMIT BUY order.
-    pub async fn limit_buy(client: &FuturesRestClient, symbol: &str, quantity: Decimal, price: Decimal) -> anyhow::Result<OrderResponse> {
+    pub async fn limit_buy(
+        client: &FuturesRestClient,
+        symbol: &str,
+        quantity: Decimal,
+        price: Decimal,
+    ) -> anyhow::Result<OrderResponse> {
         let order = NewOrderRequest::limit(symbol, Side::Buy, quantity, price);
         Self::place_order(client, &order).await
     }
 
     /// Place a LIMIT SELL order.
-    pub async fn limit_sell(client: &FuturesRestClient, symbol: &str, quantity: Decimal, price: Decimal) -> anyhow::Result<OrderResponse> {
+    pub async fn limit_sell(
+        client: &FuturesRestClient,
+        symbol: &str,
+        quantity: Decimal,
+        price: Decimal,
+    ) -> anyhow::Result<OrderResponse> {
         let order = NewOrderRequest::limit(symbol, Side::Sell, quantity, price);
         Self::place_order(client, &order).await
     }
 
     /// Place a STOP_MARKET order (stop-loss).
-    pub async fn stop_loss(client: &FuturesRestClient, symbol: &str, side: Side, stop_price: Decimal, close_position: bool) -> anyhow::Result<OrderResponse> {
+    pub async fn stop_loss(
+        client: &FuturesRestClient,
+        symbol: &str,
+        side: Side,
+        stop_price: Decimal,
+        close_position: bool,
+    ) -> anyhow::Result<OrderResponse> {
         let order = NewOrderRequest::stop_market(symbol, side, stop_price, close_position)
-            .with_client_order_id(&format!("sl_{}_{}", symbol.to_lowercase(), uuid::Uuid::new_v4().as_simple()));
+            .with_client_order_id(&format!(
+                "sl_{}_{}",
+                symbol.to_lowercase(),
+                uuid::Uuid::new_v4().as_simple()
+            ));
         Self::place_order(client, &order).await
     }
 
     /// Place a TAKE_PROFIT_MARKET order.
-    pub async fn take_profit(client: &FuturesRestClient, symbol: &str, side: Side, stop_price: Decimal, close_position: bool) -> anyhow::Result<OrderResponse> {
+    pub async fn take_profit(
+        client: &FuturesRestClient,
+        symbol: &str,
+        side: Side,
+        stop_price: Decimal,
+        close_position: bool,
+    ) -> anyhow::Result<OrderResponse> {
         let order = NewOrderRequest::take_profit_market(symbol, side, stop_price, close_position)
-            .with_client_order_id(&format!("tp_{}_{}", symbol.to_lowercase(), uuid::Uuid::new_v4().as_simple()));
+            .with_client_order_id(&format!(
+                "tp_{}_{}",
+                symbol.to_lowercase(),
+                uuid::Uuid::new_v4().as_simple()
+            ));
         Self::place_order(client, &order).await
     }
 
     /// Cancel an order by order ID.
-    pub async fn cancel_order(client: &FuturesRestClient, symbol: &str, order_id: i64) -> anyhow::Result<CancelOrderResponse> {
+    pub async fn cancel_order(
+        client: &FuturesRestClient,
+        symbol: &str,
+        order_id: i64,
+    ) -> anyhow::Result<CancelOrderResponse> {
         let params = format!("symbol={}&orderId={}", symbol, order_id);
         let value = client.delete_signed("/fapi/v1/order", &params).await?;
         let response: CancelOrderResponse = serde_json::from_value(value)?;
@@ -66,14 +111,20 @@ impl OrdersClient {
     /// Cancel all open orders for a symbol.
     /// Binance returns `{"code":200,"msg":"Success"}` when no orders exist,
     /// or a `Vec<CancelOrderResponse>` when orders were cancelled.
-    pub async fn cancel_all_orders(client: &FuturesRestClient, symbol: &str) -> anyhow::Result<Vec<CancelOrderResponse>> {
+    pub async fn cancel_all_orders(
+        client: &FuturesRestClient,
+        symbol: &str,
+    ) -> anyhow::Result<Vec<CancelOrderResponse>> {
         let params = format!("symbol={}", symbol);
-        let value = client.delete_signed("/fapi/v1/allOpenOrders", &params).await?;
+        let value = client
+            .delete_signed("/fapi/v1/allOpenOrders", &params)
+            .await?;
 
         // Check if response is an object (success ack) or array (cancelled orders)
         match value {
             serde_json::Value::Array(arr) => {
-                let responses: Vec<CancelOrderResponse> = serde_json::from_value(serde_json::Value::Array(arr))?;
+                let responses: Vec<CancelOrderResponse> =
+                    serde_json::from_value(serde_json::Value::Array(arr))?;
                 Ok(responses)
             }
             serde_json::Value::Object(obj) => {
@@ -83,8 +134,15 @@ impl OrdersClient {
                     tracing::debug!("All open orders cancelled (or none existed) for {}", symbol);
                     Ok(vec![])
                 } else {
-                    let msg = obj.get("msg").and_then(|v| v.as_str()).unwrap_or("Unknown error");
-                    Err(anyhow::anyhow!("Cancel all orders failed: code={} msg={}", code, msg))
+                    let msg = obj
+                        .get("msg")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Unknown error");
+                    Err(anyhow::anyhow!(
+                        "Cancel all orders failed: code={} msg={}",
+                        code,
+                        msg
+                    ))
                 }
             }
             other => {
@@ -96,7 +154,10 @@ impl OrdersClient {
     }
 
     /// Get open orders for a symbol.
-    pub async fn get_open_orders(client: &FuturesRestClient, symbol: &str) -> anyhow::Result<Vec<OrderResponse>> {
+    pub async fn get_open_orders(
+        client: &FuturesRestClient,
+        symbol: &str,
+    ) -> anyhow::Result<Vec<OrderResponse>> {
         let params = format!("symbol={}", symbol);
         let value = client.get_signed("/fapi/v1/openOrders", &params).await?;
         let orders: Vec<OrderResponse> = serde_json::from_value(value)?;
@@ -104,7 +165,11 @@ impl OrdersClient {
     }
 
     /// Query order by ID.
-    pub async fn query_order(client: &FuturesRestClient, symbol: &str, order_id: i64) -> anyhow::Result<OrderResponse> {
+    pub async fn query_order(
+        client: &FuturesRestClient,
+        symbol: &str,
+        order_id: i64,
+    ) -> anyhow::Result<OrderResponse> {
         let params = format!("symbol={}&orderId={}", symbol, order_id);
         let value = client.get_signed("/fapi/v1/order", &params).await?;
         let order: OrderResponse = serde_json::from_value(value)?;
@@ -113,7 +178,10 @@ impl OrdersClient {
 
     /// Cancel all TP/SL orders for a symbol (orphan cleanup).
     /// Filters for STOP_MARKET and TAKE_PROFIT_MARKET orders with reduceOnly.
-    pub async fn cancel_sl_tp_orders(client: &FuturesRestClient, symbol: &str) -> anyhow::Result<Vec<CancelOrderResponse>> {
+    pub async fn cancel_sl_tp_orders(
+        client: &FuturesRestClient,
+        symbol: &str,
+    ) -> anyhow::Result<Vec<CancelOrderResponse>> {
         let open_orders = Self::get_open_orders(client, symbol).await?;
         let mut cancelled = Vec::new();
 
@@ -130,7 +198,11 @@ impl OrdersClient {
             if is_sl_tp && order.reduce_only {
                 match Self::cancel_order(client, symbol, order.order_id).await {
                     Ok(resp) => {
-                        tracing::info!("Cancelled orphan order {} ({:?})", order.order_id, order.r#type);
+                        tracing::info!(
+                            "Cancelled orphan order {} ({:?})",
+                            order.order_id,
+                            order.r#type
+                        );
                         cancelled.push(resp);
                     }
                     Err(e) => {
@@ -143,7 +215,11 @@ impl OrdersClient {
         if cancelled.is_empty() {
             tracing::debug!("No orphan SL/TP orders to cancel for {}", symbol);
         } else {
-            tracing::info!("Cancelled {} orphan SL/TP orders for {}", cancelled.len(), symbol);
+            tracing::info!(
+                "Cancelled {} orphan SL/TP orders for {}",
+                cancelled.len(),
+                symbol
+            );
         }
 
         Ok(cancelled)

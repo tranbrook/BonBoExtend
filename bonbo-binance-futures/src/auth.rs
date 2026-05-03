@@ -54,10 +54,7 @@ mod tests {
 
     #[test]
     fn test_sign_known_value() {
-        let auth = Auth::new(
-            "api_key".to_string(),
-            "secret".to_string(),
-        );
+        let auth = Auth::new("api_key".to_string(), "secret".to_string());
         let sig = auth.sign("symbol=BTCUSDT&side=BUY&type=LIMIT");
         // HMAC-SHA256 is deterministic
         assert!(!sig.is_empty());

@@ -43,12 +43,11 @@
 //! The optimal slice is the `cum_qty` at the last level where
 //! `impact_bps[i] ≤ max_impact_bps`.
 
-use crate::ofi::{OfiConfig, OfiScore, OfiSignal};
+use crate::ofi::{OfiScore, OfiSignal};
 use crate::orderbook::{OrderBookSnapshot, PriceLevel, Side};
 
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use std::str::FromStr;
 
 // ═══════════════════════════════════════════════════════════════
 // CONFIGURATION
@@ -318,7 +317,7 @@ impl OptimalSlicer {
         let mut cum_qty = Decimal::ZERO;
         let mut cum_cost = Decimal::ZERO;
         let mut levels_consumed = 0usize;
-        let mut est_vwap = mid;
+        let mut _est_vwap = mid;
         let mut impact_bps = 0.0f64;
 
         for (i, level) in levels.iter().enumerate().take(self.config.max_depth_levels) {
@@ -339,10 +338,14 @@ impl OptimalSlicer {
                 // Interpolate within this level to find exact qty
                 if cum_qty > Decimal::ZERO {
                     let prev_slip = match side {
-                        Side::Buy => f64_from_decimal(cum_cost / cum_qty - mid)
-                            / f64_from_decimal(mid) * 10000.0,
-                        Side::Sell => f64_from_decimal(mid - cum_cost / cum_qty)
-                            / f64_from_decimal(mid) * 10000.0,
+                        Side::Buy => {
+                            f64_from_decimal(cum_cost / cum_qty - mid) / f64_from_decimal(mid)
+                                * 10000.0
+                        }
+                        Side::Sell => {
+                            f64_from_decimal(mid - cum_cost / cum_qty) / f64_from_decimal(mid)
+                                * 10000.0
+                        }
                     };
                     // Linear interpolation
                     let slip_ratio = if slip > prev_slip {
@@ -363,7 +366,7 @@ impl OptimalSlicer {
             cum_qty = trial_qty;
             cum_cost = trial_cost;
             levels_consumed = i + 1;
-            est_vwap = trial_vwap;
+            _est_vwap = trial_vwap;
             impact_bps = slip;
         }
 
@@ -396,10 +399,13 @@ impl OptimalSlicer {
         }
 
         // ── Step 3: Participation rate cap ──
-        let visible_liq: Decimal = levels.iter().take(levels_consumed).map(|l| l.quantity).sum();
+        let visible_liq: Decimal = levels
+            .iter()
+            .take(levels_consumed)
+            .map(|l| l.quantity)
+            .sum();
         let cap = visible_liq
-            * Decimal::from_f64_retain(self.config.max_participation_rate)
-                .unwrap_or(Decimal::ONE);
+            * Decimal::from_f64_retain(self.config.max_participation_rate).unwrap_or(Decimal::ONE);
         if qty > cap {
             let before = qty;
             qty = cap;
@@ -569,12 +575,22 @@ fn f64_from_decimal(d: Decimal) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
 
-    fn make_book(bid_prices: &[i64], bid_qtys: &[&str], ask_prices: &[i64], ask_qtys: &[&str]) -> OrderBookSnapshot {
-        let bids: Vec<PriceLevel> = bid_prices.iter().zip(bid_qtys.iter())
+    fn make_book(
+        bid_prices: &[i64],
+        bid_qtys: &[&str],
+        ask_prices: &[i64],
+        ask_qtys: &[&str],
+    ) -> OrderBookSnapshot {
+        let bids: Vec<PriceLevel> = bid_prices
+            .iter()
+            .zip(bid_qtys.iter())
             .map(|(p, q)| PriceLevel::new(Decimal::from(*p), Decimal::from_str(q).unwrap()))
             .collect();
-        let asks: Vec<PriceLevel> = ask_prices.iter().zip(ask_qtys.iter())
+        let asks: Vec<PriceLevel> = ask_prices
+            .iter()
+            .zip(ask_qtys.iter())
             .map(|(p, q)| PriceLevel::new(Decimal::from(*p), Decimal::from_str(q).unwrap()))
             .collect();
         OrderBookSnapshot {
@@ -729,7 +745,11 @@ mod tests {
         let result = slicer.compute(&book, Side::Buy, Decimal::from(100000));
         // Visible liquidity = 100+200+300+400+500+600 = 2100
         // 5% of 2100 = 105
-        assert!(result.slice_qty <= Decimal::from(120), "expected ~105, got {}", result.slice_qty);
+        assert!(
+            result.slice_qty <= Decimal::from(120),
+            "expected ~105, got {}",
+            result.slice_qty
+        );
         assert!(result.participation_rate <= 0.06);
     }
 
@@ -788,7 +808,8 @@ mod tests {
         assert!(
             result2.slice_qty <= result1.slice_qty,
             "expected 2nd <= 1st: {} vs {}",
-            result2.slice_qty, result1.slice_qty,
+            result2.slice_qty,
+            result1.slice_qty,
         );
     }
 
@@ -838,7 +859,10 @@ mod tests {
         });
 
         let result = slicer.compute(&book, Side::Buy, Decimal::from(10000));
-        let has_boost = result.adjustments.iter().any(|a| a.factor == "ofi_signal" && a.after > a.before);
+        let has_boost = result
+            .adjustments
+            .iter()
+            .any(|a| a.factor == "ofi_signal" && a.after > a.before);
         assert!(has_boost, "OFI should boost: {:?}", result.adjustments);
     }
 
@@ -861,7 +885,10 @@ mod tests {
         });
 
         let result = slicer.compute(&book, Side::Buy, Decimal::from(10000));
-        let has_penalty = result.adjustments.iter().any(|a| a.factor == "ofi_signal" && a.after < a.before);
+        let has_penalty = result
+            .adjustments
+            .iter()
+            .any(|a| a.factor == "ofi_signal" && a.after < a.before);
         assert!(has_penalty, "OFI should reduce: {:?}", result.adjustments);
     }
 
@@ -889,7 +916,8 @@ mod tests {
     #[test]
     fn test_vwap_single_level() {
         let levels = vec![PriceLevel::new(Decimal::from(100), Decimal::from(10))];
-        let (vwap, impact) = compute_vwap_and_impact(&levels, Decimal::from(5), Side::Buy, Decimal::from(99));
+        let (vwap, impact) =
+            compute_vwap_and_impact(&levels, Decimal::from(5), Side::Buy, Decimal::from(99));
         assert_eq!(vwap, Some(Decimal::from(100)));
         assert!(impact.unwrap() > 0.0);
     }
@@ -901,7 +929,8 @@ mod tests {
             PriceLevel::new(Decimal::from(101), Decimal::from(10)),
         ];
         // Buy 15: 10 @ 100 + 5 @ 101 = (1000 + 505) / 15 = 100.333...
-        let (vwap, impact) = compute_vwap_and_impact(&levels, Decimal::from(15), Side::Buy, Decimal::from(100));
+        let (vwap, impact) =
+            compute_vwap_and_impact(&levels, Decimal::from(15), Side::Buy, Decimal::from(100));
         assert_eq!(vwap.unwrap().to_string().starts_with("100.3"), true);
     }
 
@@ -932,7 +961,11 @@ mod tests {
         let mut slicer = OptimalSlicer::new(OptimalSliceConfig::default());
         let result = slicer.compute(&book, Side::Buy, Decimal::from(1000));
         // Should be < 1ms
-        assert!(result.compute_time_us < 1000, "compute took {}µs", result.compute_time_us);
+        assert!(
+            result.compute_time_us < 1000,
+            "compute took {}µs",
+            result.compute_time_us
+        );
     }
 
     // ── Slices Remaining Test ────────────────────────────────

@@ -2,7 +2,7 @@
 
 use crate::models::{Order, OrderSide, OrderType, Trade};
 use bonbo_ta::IncrementalIndicator;
-use bonbo_ta::indicators::{Rsi, Sma, Ema, Macd};
+use bonbo_ta::indicators::{Ema, Macd, Rsi, Sma};
 use bonbo_ta::models::OhlcvCandle;
 use std::collections::HashMap;
 
@@ -17,6 +17,10 @@ pub struct StrategyContext {
     pub trades: Vec<Trade>,
     /// Current candle index.
     pub bar_index: usize,
+    /// Whether higher-timeframe bar is complete (strict MTF mode).
+    /// When false, strategy should NOT use HTF indicators for signals.
+    /// Default: true (always allowed, i.e., non-strict mode).
+    pub mtf_bar_complete: bool,
 }
 
 impl StrategyContext {
@@ -26,6 +30,7 @@ impl StrategyContext {
             positions: HashMap::new(),
             trades: Vec::new(),
             bar_index: 0,
+            mtf_bar_complete: true,
         }
     }
 
@@ -204,22 +209,36 @@ impl BollingerBandsStrategy {
     }
 
     fn bands(&self) -> Option<(f64, f64, f64)> {
-        if self.prices.len() < self.period { return None; }
+        if self.prices.len() < self.period {
+            return None;
+        }
         let len = self.prices.len();
-        let mean: f64 = self.prices[len-self.period..].iter().sum::<f64>() / self.period as f64;
-        let variance: f64 = self.prices[len-self.period..].iter().map(|p| (p - mean).powi(2)).sum::<f64>() / self.period as f64;
+        let mean: f64 = self.prices[len - self.period..].iter().sum::<f64>() / self.period as f64;
+        let variance: f64 = self.prices[len - self.period..]
+            .iter()
+            .map(|p| (p - mean).powi(2))
+            .sum::<f64>()
+            / self.period as f64;
         let std_dev = variance.sqrt();
-        Some((mean - self.multiplier * std_dev, mean, mean + self.multiplier * std_dev))
+        Some((
+            mean - self.multiplier * std_dev,
+            mean,
+            mean + self.multiplier * std_dev,
+        ))
     }
 }
 
 impl Strategy for BollingerBandsStrategy {
-    fn name(&self) -> &str { "Bollinger Bands" }
+    fn name(&self) -> &str {
+        "Bollinger Bands"
+    }
 
     fn on_bar(&mut self, ctx: &mut StrategyContext, candle: &OhlcvCandle) -> Vec<Order> {
         let _ = self.sma.next(candle.close);
         self.prices.push(candle.close);
-        if self.prices.len() > self.period * 2 { self.prices.drain(..self.period); }
+        if self.prices.len() > self.period * 2 {
+            self.prices.drain(..self.period);
+        }
 
         let mut orders = Vec::new();
         let symbol = "ASSET";
@@ -275,7 +294,9 @@ impl MacdCrossoverStrategy {
 }
 
 impl Strategy for MacdCrossoverStrategy {
-    fn name(&self) -> &str { "MACD Crossover" }
+    fn name(&self) -> &str {
+        "MACD Crossover"
+    }
 
     fn on_bar(&mut self, ctx: &mut StrategyContext, candle: &OhlcvCandle) -> Vec<Order> {
         let result = self.macd.next(candle.close);
@@ -330,16 +351,24 @@ pub struct MomentumStrategy {
 
 impl MomentumStrategy {
     pub fn new(lookback: usize, threshold_pct: f64) -> Self {
-        Self { lookback, threshold: threshold_pct / 100.0, prices: Vec::with_capacity(lookback + 1) }
+        Self {
+            lookback,
+            threshold: threshold_pct / 100.0,
+            prices: Vec::with_capacity(lookback + 1),
+        }
     }
 }
 
 impl Strategy for MomentumStrategy {
-    fn name(&self) -> &str { "Momentum" }
+    fn name(&self) -> &str {
+        "Momentum"
+    }
 
     fn on_bar(&mut self, ctx: &mut StrategyContext, candle: &OhlcvCandle) -> Vec<Order> {
         self.prices.push(candle.close);
-        if self.prices.len() > self.lookback + 1 { self.prices.remove(0); }
+        if self.prices.len() > self.lookback + 1 {
+            self.prices.remove(0);
+        }
 
         let mut orders = Vec::new();
         let symbol = "ASSET";
@@ -388,18 +417,28 @@ pub struct BreakoutStrategy {
 
 impl BreakoutStrategy {
     pub fn new(period: usize) -> Self {
-        Self { period, highs: Vec::with_capacity(period + 1), lows: Vec::with_capacity(period + 1) }
+        Self {
+            period,
+            highs: Vec::with_capacity(period + 1),
+            lows: Vec::with_capacity(period + 1),
+        }
     }
 }
 
 impl Strategy for BreakoutStrategy {
-    fn name(&self) -> &str { "Breakout" }
+    fn name(&self) -> &str {
+        "Breakout"
+    }
 
     fn on_bar(&mut self, ctx: &mut StrategyContext, candle: &OhlcvCandle) -> Vec<Order> {
         self.highs.push(candle.high);
         self.lows.push(candle.low);
-        if self.highs.len() > self.period { self.highs.remove(0); }
-        if self.lows.len() > self.period { self.lows.remove(0); }
+        if self.highs.len() > self.period {
+            self.highs.remove(0);
+        }
+        if self.lows.len() > self.period {
+            self.lows.remove(0);
+        }
 
         let mut orders = Vec::new();
         let symbol = "ASSET";
@@ -461,7 +500,9 @@ impl EmaCrossoverStrategy {
 }
 
 impl Strategy for EmaCrossoverStrategy {
-    fn name(&self) -> &str { "EMA Crossover" }
+    fn name(&self) -> &str {
+        "EMA Crossover"
+    }
 
     fn on_bar(&mut self, ctx: &mut StrategyContext, candle: &OhlcvCandle) -> Vec<Order> {
         let fast = self.fast_ema.next(candle.close);

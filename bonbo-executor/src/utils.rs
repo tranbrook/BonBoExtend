@@ -25,7 +25,7 @@ pub fn compute_jitter(interval_secs: u64, jitter_pct: f64, rng: &mut SimpleRng) 
     }
     let max_jitter = interval_secs as f64 * jitter_pct;
     // Use simple PRNG: value in [-1, 1] × max_jitter
-    let raw = (rng.next() as f64 / u64::MAX as f64) * 2.0 - 1.0;
+    let raw = (rng.next_val() as f64 / u64::MAX as f64) * 2.0 - 1.0;
     raw * max_jitter
 }
 
@@ -76,7 +76,11 @@ mod tests {
         let max_jitter = interval as f64 * pct; // 6.0
         for _ in 0..100 {
             let j = compute_jitter(interval, pct, &mut rng);
-            assert!(j >= -max_jitter && j <= max_jitter, "jitter {} outside range", j);
+            assert!(
+                j >= -max_jitter && j <= max_jitter,
+                "jitter {} outside range",
+                j
+            );
         }
     }
 }

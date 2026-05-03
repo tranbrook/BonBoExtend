@@ -1,7 +1,11 @@
 //! Market Data Tool Plugin — fetch crypto market data.
+//!
+//! Supports both Spot and Futures endpoints controlled by `BINANCE_MARKET_TYPE` env var.
+//! Set `BINANCE_MARKET_TYPE=futures` to use Binance USDT-M Futures API.
 
-use crate::plugin::*;
 use async_trait::async_trait;
+use bonbo_data::binance_config::BinanceEndpoints;
+use bonbo_extend_core::*;
 
 /// Plugin that provides market data tools.
 pub struct MarketDataPlugin {
@@ -164,10 +168,8 @@ impl ToolPlugin for MarketDataPlugin {
 
 /// Fetch 24hr ticker from Binance.
 async fn fetch_ticker(symbol: &str) -> anyhow::Result<String> {
-    let url = format!(
-        "https://api.binance.com/api/v3/ticker/24hr?symbol={}",
-        symbol.to_uppercase()
-    );
+    let ep = BinanceEndpoints::current();
+    let url = ep.ticker_24hr_url(Some(&symbol.to_uppercase()));
     let client = reqwest::Client::new();
     let resp = client.get(&url).send().await?;
 
@@ -212,12 +214,8 @@ async fn fetch_ticker(symbol: &str) -> anyhow::Result<String> {
 
 /// Fetch klines/candles from Binance.
 async fn fetch_klines(symbol: &str, interval: &str, limit: u32) -> anyhow::Result<String> {
-    let url = format!(
-        "https://api.binance.com/api/v3/klines?symbol={}&interval={}&limit={}",
-        symbol.to_uppercase(),
-        interval,
-        limit
-    );
+    let ep = BinanceEndpoints::current();
+    let url = ep.klines_url(&symbol.to_uppercase(), interval, Some(limit));
     let client = reqwest::Client::new();
     let resp = client.get(&url).send().await?;
 
@@ -265,11 +263,8 @@ async fn fetch_klines(symbol: &str, interval: &str, limit: u32) -> anyhow::Resul
 
 /// Fetch order book from Binance.
 async fn fetch_orderbook(symbol: &str, limit: u32) -> anyhow::Result<String> {
-    let url = format!(
-        "https://api.binance.com/api/v3/depth?symbol={}&limit={}",
-        symbol.to_uppercase(),
-        limit
-    );
+    let ep = BinanceEndpoints::current();
+    let url = ep.depth_url(&symbol.to_uppercase(), limit);
     let client = reqwest::Client::new();
     let resp = client.get(&url).send().await?;
 
@@ -310,7 +305,8 @@ async fn fetch_orderbook(symbol: &str, limit: u32) -> anyhow::Result<String> {
 
 /// Fetch top crypto by volume from Binance.
 async fn fetch_top_volume(limit: u32) -> anyhow::Result<String> {
-    let url = "https://api.binance.com/api/v3/ticker/24hr";
+    let ep = BinanceEndpoints::current();
+    let url = ep.ticker_24hr_url(None);
     let client = reqwest::Client::new();
     let resp = client.get(url).send().await?;
 

@@ -27,16 +27,14 @@
 //! `futures_place_order` bypasses all of this and goes straight to Binance.
 //! Only use it when you need a specific order type the pipeline doesn't cover.
 
-use crate::plugin::*;
 use async_trait::async_trait;
 use bonbo_binance_futures::models::*;
 use bonbo_binance_futures::rest::{AlgoOrdersClient, OrdersClient};
 use bonbo_binance_futures::{FuturesConfig, FuturesRestClient};
-use bonbo_executor::flash_limit::{analyze_spread, FlashLimitConfig, SpreadTracker};
-use bonbo_executor::market_impact::{estimate_impact, ImpactParams};
-use bonbo_executor::optimal_slicer::{OptimalSliceConfig, OptimalSlicer};
-use bonbo_executor::orderbook::{OrderBookSnapshot, PriceLevel, Side as ExecSide};
-use bonbo_executor::smart_market::SmartMarketConfig;
+use bonbo_executor::flash_limit::{FlashLimitConfig, SpreadTracker, analyze_spread};
+use bonbo_executor::market_impact::{ImpactParams, estimate_impact};
+use bonbo_executor::orderbook::{OrderBookSnapshot, Side as ExecSide};
+use bonbo_extend_core::*;
 use rust_decimal::Decimal;
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -56,7 +54,8 @@ impl TradingPlugin {
                 id: "bonbo-trading".to_string(),
                 name: "Trading Tools".to_string(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
-                description: "Binance Futures trading: orders, positions, leverage, margin".to_string(),
+                description: "Binance Futures trading: orders, positions, leverage, margin"
+                    .to_string(),
                 author: "BonBo Team".to_string(),
                 tags: vec![
                     "trading".to_string(),
@@ -92,7 +91,10 @@ impl TradingPlugin {
         match s.to_uppercase().as_str() {
             "BUY" => Ok(Side::Buy),
             "SELL" => Ok(Side::Sell),
-            other => Err(anyhow::anyhow!("Invalid side '{}'. Use BUY or SELL.", other)),
+            other => Err(anyhow::anyhow!(
+                "Invalid side '{}'. Use BUY or SELL.",
+                other
+            )),
         }
     }
 
@@ -102,18 +104,28 @@ impl TradingPlugin {
         let client = self.get_client().await?;
         let raw = client.get_signed("/fapi/v3/balance", "").await?;
 
-        let usdt = raw.as_array()
-            .and_then(|arr| arr.iter().find(|b| b.get("asset").and_then(|a| a.as_str()) == Some("USDT")))
+        let usdt = raw
+            .as_array()
+            .and_then(|arr| {
+                arr.iter()
+                    .find(|b| b.get("asset").and_then(|a| a.as_str()) == Some("USDT"))
+            })
             .ok_or_else(|| anyhow::anyhow!("USDT balance not found"))?;
 
-        let balance: Decimal = usdt.get("balance")
-            .and_then(|v| v.as_str()).and_then(|s| s.parse().ok())
+        let balance: Decimal = usdt
+            .get("balance")
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse().ok())
             .unwrap_or(Decimal::ZERO);
-        let available: Decimal = usdt.get("availableBalance")
-            .and_then(|v| v.as_str()).and_then(|s| s.parse().ok())
+        let available: Decimal = usdt
+            .get("availableBalance")
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse().ok())
             .unwrap_or(Decimal::ZERO);
-        let pnl: Decimal = usdt.get("crossUnPnl")
-            .and_then(|v| v.as_str()).and_then(|s| s.parse().ok())
+        let pnl: Decimal = usdt
+            .get("crossUnPnl")
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse().ok())
             .unwrap_or(Decimal::ZERO);
 
         Ok(format!(
@@ -132,13 +144,18 @@ impl TradingPlugin {
         let client = self.get_client().await?;
         let raw = client.get_signed("/fapi/v3/positionRisk", "").await?;
 
-        let positions: Vec<&Value> = raw.as_array()
-            .map(|arr| arr.iter().filter(|p| {
-                p.get("positionAmt")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s != "0" && s != "0.0" && s != "-0")
-                    .unwrap_or(false)
-            }).collect())
+        let positions: Vec<&Value> = raw
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter(|p| {
+                        p.get("positionAmt")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s != "0" && s != "0.0" && s != "-0")
+                            .unwrap_or(false)
+                    })
+                    .collect()
+            })
             .unwrap_or_default();
 
         if positions.is_empty() {
@@ -148,12 +165,32 @@ impl TradingPlugin {
         let mut rows = String::new();
         for p in &positions {
             let symbol = p.get("symbol").and_then(|v| v.as_str()).unwrap_or("?");
-            let amt: Decimal = p.get("positionAmt").and_then(|v| v.as_str()).and_then(|s| s.parse().ok()).unwrap_or(Decimal::ZERO);
-            let entry: Decimal = p.get("entryPrice").and_then(|v| v.as_str()).and_then(|s| s.parse().ok()).unwrap_or(Decimal::ZERO);
-            let mark: Decimal = p.get("markPrice").and_then(|v| v.as_str()).and_then(|s| s.parse().ok()).unwrap_or(Decimal::ZERO);
-            let pnl: Decimal = p.get("unRealizedProfit").and_then(|v| v.as_str()).and_then(|s| s.parse().ok()).unwrap_or(Decimal::ZERO);
+            let amt: Decimal = p
+                .get("positionAmt")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(Decimal::ZERO);
+            let entry: Decimal = p
+                .get("entryPrice")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(Decimal::ZERO);
+            let mark: Decimal = p
+                .get("markPrice")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(Decimal::ZERO);
+            let pnl: Decimal = p
+                .get("unRealizedProfit")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(Decimal::ZERO);
             let lev: i32 = p.get("leverage").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-            let liq: Decimal = p.get("liquidationPrice").and_then(|v| v.as_str()).and_then(|s| s.parse().ok()).unwrap_or(Decimal::ZERO);
+            let liq: Decimal = p
+                .get("liquidationPrice")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(Decimal::ZERO);
             let side = if amt > Decimal::ZERO { "LONG" } else { "SHORT" };
 
             rows.push_str(&format!(
@@ -167,17 +204,22 @@ impl TradingPlugin {
              | Symbol | Side | Qty | Entry | Mark | PnL | Lev | Liq Price |\n\
              |--------|------|-----|-------|------|-----|-----|----------|{}\n\
              \n💡 Use `futures_close_position` to close a position.",
-            positions.len(), rows
+            positions.len(),
+            rows
         ))
     }
 
     async fn get_open_orders(&self, args: &Value) -> anyhow::Result<String> {
-        let symbol = args["symbol"].as_str()
+        let symbol = args["symbol"]
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("symbol is required"))?;
         let client = self.get_client().await?;
-        let raw = client.get_signed("/fapi/v1/openOrders", &format!("symbol={}", symbol)).await?;
+        let raw = client
+            .get_signed("/fapi/v1/openOrders", &format!("symbol={}", symbol))
+            .await?;
 
-        let orders = raw.as_array()
+        let orders = raw
+            .as_array()
             .ok_or_else(|| anyhow::anyhow!("Unexpected response format"))?;
 
         if orders.is_empty() {
@@ -192,7 +234,10 @@ impl TradingPlugin {
             let qty = o.get("origQty").and_then(|v| v.as_str()).unwrap_or("0");
             let price = o.get("price").and_then(|v| v.as_str()).unwrap_or("0");
             let stop = o.get("stopPrice").and_then(|v| v.as_str()).unwrap_or("-");
-            rows.push_str(&format!("\n| {} | {} | {} | {} | {} | {}", oid, side, otype, qty, price, stop));
+            rows.push_str(&format!(
+                "\n| {} | {} | {} | {} | {} | {}",
+                oid, side, otype, qty, price, stop
+            ));
         }
 
         Ok(format!(
@@ -200,17 +245,21 @@ impl TradingPlugin {
              | Order ID | Side | Type | Qty | Price | Stop Price |\n\
              |----------|------|------|-----|-------|------------|{}\n\
              \n💡 Use `futures_cancel_orders` to cancel.",
-            symbol, orders.len(), rows
+            symbol,
+            orders.len(),
+            rows
         ))
     }
 
     async fn set_leverage(&self, args: &Value) -> anyhow::Result<String> {
-        let symbol = args["symbol"].as_str()
+        let symbol = args["symbol"]
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("symbol is required"))?;
-        let leverage = args["leverage"].as_u64()
+        let leverage = args["leverage"]
+            .as_u64()
             .ok_or_else(|| anyhow::anyhow!("leverage is required"))? as u32;
 
-        if leverage < 1 || leverage > 125 {
+        if !(1..=125).contains(&leverage) {
             anyhow::bail!("Leverage must be between 1 and 125");
         }
 
@@ -219,17 +268,23 @@ impl TradingPlugin {
         let raw = client.post_signed("/fapi/v1/leverage", &params).await?;
 
         let sym = raw.get("symbol").and_then(|v| v.as_str()).unwrap_or(symbol);
-        let lev = raw.get("leverage").and_then(|v| v.as_i64()).unwrap_or(leverage as i64);
+        let lev = raw
+            .get("leverage")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(leverage as i64);
 
         Ok(format!(
-            "✅ **Leverage Set**\n\nSymbol: **{}**\nLeverage: **{}x**", sym, lev
+            "✅ **Leverage Set**\n\nSymbol: **{}**\nLeverage: **{}x**",
+            sym, lev
         ))
     }
 
     async fn set_margin_type(&self, args: &Value) -> anyhow::Result<String> {
-        let symbol = args["symbol"].as_str()
+        let symbol = args["symbol"]
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("symbol is required"))?;
-        let margin_type = args["margin_type"].as_str()
+        let margin_type = args["margin_type"]
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("margin_type is required (CROSSED or ISOLATED)"))?;
 
         let mt = margin_type.to_uppercase();
@@ -240,11 +295,17 @@ impl TradingPlugin {
         let client = self.get_client().await?;
         let params = format!("symbol={}&marginType={}", symbol, mt);
         match client.post_signed("/fapi/v1/marginType", &params).await {
-            Ok(_) => Ok(format!("✅ **Margin Type Set**\n\nSymbol: **{}**\nMargin: **{}**", symbol, mt)),
+            Ok(_) => Ok(format!(
+                "✅ **Margin Type Set**\n\nSymbol: **{}**\nMargin: **{}**",
+                symbol, mt
+            )),
             Err(e) => {
                 let msg = e.to_string();
                 if msg.contains("No need to change") {
-                    Ok(format!("ℹ️ **Margin Type Already Set**\n\nSymbol: **{}** is already **{}**", symbol, mt))
+                    Ok(format!(
+                        "ℹ️ **Margin Type Already Set**\n\nSymbol: **{}** is already **{}**",
+                        symbol, mt
+                    ))
                 } else {
                     Err(e)
                 }
@@ -258,7 +319,8 @@ impl TradingPlugin {
     /// 3. Optimal Slicer → max safe quantity
     /// 4. Smart Market 5-phase → AIM (limit) → WAIT → FIRE (market sweep)
     /// 5. Optionally set SL/TP
-    /// **DEFAULT execution method** — runs the full analysis pipeline:
+    ///
+    ///    **DEFAULT execution method** — runs the full analysis pipeline:
     /// 1. Fetch orderbook → compute spread, imbalance
     /// 2. Flash Limit analysis → route decision
     /// 3. Pre-trade slippage check
@@ -266,13 +328,17 @@ impl TradingPlugin {
     /// 5. Execute via Binance
     /// 6. Optionally set SL/TP
     async fn smart_execute(&self, args: &Value) -> anyhow::Result<String> {
-        let symbol = args["symbol"].as_str()
+        let symbol = args["symbol"]
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("symbol is required"))?;
-        let side_str = args["side"].as_str()
+        let side_str = args["side"]
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("side is required (BUY/SELL)"))?;
-        let qty_str = args["quantity"].as_str()
+        let qty_str = args["quantity"]
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("quantity is required"))?;
-        let max_slippage_bps: f64 = args["max_slippage_bps"].as_str()
+        let max_slippage_bps: f64 = args["max_slippage_bps"]
+            .as_str()
             .and_then(|s| s.parse().ok())
             .or_else(|| args["max_slippage_bps"].as_f64())
             .unwrap_or(5.0);
@@ -280,7 +346,8 @@ impl TradingPlugin {
         let tp_price = args["take_profit_price"].as_str();
 
         let side = Self::parse_side(side_str)?;
-        let quantity: Decimal = qty_str.parse()
+        let quantity: Decimal = qty_str
+            .parse()
             .map_err(|_| anyhow::anyhow!("Invalid quantity '{}'", qty_str))?;
         let exec_side = match side {
             Side::Buy => ExecSide::Buy,
@@ -290,10 +357,10 @@ impl TradingPlugin {
         let client = self.get_client().await?;
 
         // ═══ STEP 1: Fetch orderbook ═══
-        let depth_json = client.get_public(
-            "/fapi/v1/depth",
-            &format!("symbol={}&limit=20", symbol),
-        ).await.map_err(|e| anyhow::anyhow!("Orderbook fetch failed: {}", e))?;
+        let depth_json = client
+            .get_public("/fapi/v1/depth", &format!("symbol={}&limit=20", symbol))
+            .await
+            .map_err(|e| anyhow::anyhow!("Orderbook fetch failed: {}", e))?;
 
         let book = OrderBookSnapshot::from_binance_depth(symbol, &depth_json)
             .ok_or_else(|| anyhow::anyhow!("Failed to parse orderbook for {}", symbol))?;
@@ -336,22 +403,34 @@ impl TradingPlugin {
 
         // ═══ STEP 4: Determine order type ═══
         let (order_type, execution_note) = if spread_f64 <= 2.0 {
-            ("LIMIT", format!(
-                "⚡ **Flash Limit** (spread {:.2} bps ≤ threshold)\n\
+            (
+                "LIMIT",
+                format!(
+                    "⚡ **Flash Limit** (spread {:.2} bps ≤ threshold)\n\
                  → Limit at touch price (maker fee 0.02%, saves ~{:.2} bps)\n\
                  → Price protection: only fills if book is favorable",
-                spread_f64, savings_bps))
+                    spread_f64, savings_bps
+                ),
+            )
         } else if spread_f64 <= 10.0 {
-            ("LIMIT", format!(
-                "📐 **Adaptive Limit** (spread {:.2} bps)\n\
+            (
+                "LIMIT",
+                format!(
+                    "📐 **Adaptive Limit** (spread {:.2} bps)\n\
                  → Limit at best touch price\n\
                  → If not filled → retry as market",
-                spread_f64))
+                    spread_f64
+                ),
+            )
         } else if spread_f64 <= 25.0 {
-            ("MARKET", format!(
-                "🏪 **Market Order** (spread {:.2} bps — too wide for limit)\n\
+            (
+                "MARKET",
+                format!(
+                    "🏪 **Market Order** (spread {:.2} bps — too wide for limit)\n\
                  → Guaranteed fill, slippage-gated at {:.1} bps",
-                spread_f64, max_slippage_bps))
+                    spread_f64, max_slippage_bps
+                ),
+            )
         } else {
             return Ok(format!(
                 "🛑 **Trade Blocked — Spread Too Wide**\n\n\
@@ -372,7 +451,10 @@ impl TradingPlugin {
         };
 
         // ═══ STEP 6: Execute order via Binance ═══
-        let side_str_param = match side { Side::Buy => "BUY", Side::Sell => "SELL" };
+        let side_str_param = match side {
+            Side::Buy => "BUY",
+            Side::Sell => "SELL",
+        };
         let params_str = if order_type == "LIMIT" {
             format!(
                 "symbol={}&side={}&type=LIMIT&quantity={}&price={}&timeInForce=GTC",
@@ -395,8 +477,12 @@ impl TradingPlugin {
                         "symbol={}&side={}&type=MARKET&quantity={}",
                         symbol, side_str_param, quantity
                     );
-                    client.post_signed("/fapi/v1/order", &market_params).await
-                        .map_err(|e2| anyhow::anyhow!("Both limit and market failed: {} | {}", e, e2))?
+                    client
+                        .post_signed("/fapi/v1/order", &market_params)
+                        .await
+                        .map_err(|e2| {
+                            anyhow::anyhow!("Both limit and market failed: {} | {}", e, e2)
+                        })?
                 } else {
                     return Err(anyhow::anyhow!("Order failed: {}", e));
                 }
@@ -404,45 +490,81 @@ impl TradingPlugin {
         };
 
         let order_id = raw.get("orderId").and_then(|v| v.as_i64()).unwrap_or(0);
-        let status = raw.get("status").and_then(|v| v.as_str()).unwrap_or("UNKNOWN");
-        let exec_qty = raw.get("executedQty").and_then(|v| v.as_str()).unwrap_or("0");
+        let status = raw
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("UNKNOWN");
+        let exec_qty = raw
+            .get("executedQty")
+            .and_then(|v| v.as_str())
+            .unwrap_or("0");
         let avg_price = raw.get("avgPrice").and_then(|v| v.as_str()).unwrap_or("-");
-        let fill_status = if status == "FILLED" { "✅ FILLED".to_string() } else { format!("⏳ {}", status) };
+        let fill_status = if status == "FILLED" {
+            "✅ FILLED".to_string()
+        } else {
+            format!("⏳ {}", status)
+        };
 
         // ═══ STEP 7: Set SL/TP if requested ═══
         let mut sl_tp_report = String::new();
-        if (status == "FILLED" || status == "PARTIALLY_FILLED") && (sl_price.is_some() || tp_price.is_some()) {
-            let close_side = match side { Side::Buy => "SELL", Side::Sell => "BUY" };
-            if let Some(sl) = sl_price {
-                let sl_params = format!(
-                    "algoType=CONDITIONAL&symbol={}&side={}&type=STOP_MARKET&quantity={}&triggerPrice={}&workingType=MARK_PRICE",
-                    symbol, close_side, quantity, sl
-                );
-                match client.post_signed("/fapi/v1/algoOrder", &sl_params).await {
-                    Ok(r) => {
-                        let algo_id = r.get("algoId").and_then(|v| v.as_i64()).unwrap_or(0);
-                        sl_tp_report.push_str(&format!("\n| Stop Loss | {} @ {} (Algo #{}) ✅ |", close_side, sl, algo_id));
+        if sl_price.is_some() || tp_price.is_some() {
+            if status == "FILLED" || status == "PARTIALLY_FILLED" {
+                // Order filled — place SL/TP immediately
+                let close_side = match side {
+                    Side::Buy => "SELL",
+                    Side::Sell => "BUY",
+                };
+                if let Some(sl) = sl_price {
+                    let sl_params = format!(
+                        "algoType=CONDITIONAL&symbol={}&side={}&type=STOP_MARKET&quantity={}&triggerPrice={}&workingType=MARK_PRICE",
+                        symbol, close_side, quantity, sl
+                    );
+                    match client.post_signed("/fapi/v1/algoOrder", &sl_params).await {
+                        Ok(r) => {
+                            let algo_id = r.get("algoId").and_then(|v| v.as_i64()).unwrap_or(0);
+                            sl_tp_report.push_str(&format!(
+                                "\n| Stop Loss | {} @ {} (Algo #{}) ✅ |",
+                                close_side, sl, algo_id
+                            ));
+                        }
+                        Err(e) => {
+                            sl_tp_report.push_str(&format!("\n| Stop Loss | ❌ Failed: {} |", e))
+                        }
                     }
-                    Err(e) => sl_tp_report.push_str(&format!("\n| Stop Loss | ❌ Failed: {} |", e)),
                 }
-            }
-            if let Some(tp) = tp_price {
-                let tp_params = format!(
-                    "algoType=CONDITIONAL&symbol={}&side={}&type=TAKE_PROFIT_MARKET&quantity={}&triggerPrice={}&workingType=MARK_PRICE",
-                    symbol, close_side, quantity, tp
-                );
-                match client.post_signed("/fapi/v1/algoOrder", &tp_params).await {
-                    Ok(r) => {
-                        let algo_id = r.get("algoId").and_then(|v| v.as_i64()).unwrap_or(0);
-                        sl_tp_report.push_str(&format!("\n| Take Profit | {} @ {} (Algo #{}) ✅ |", close_side, tp, algo_id));
+                if let Some(tp) = tp_price {
+                    let tp_params = format!(
+                        "algoType=CONDITIONAL&symbol={}&side={}&type=TAKE_PROFIT_MARKET&quantity={}&triggerPrice={}&workingType=MARK_PRICE",
+                        symbol, close_side, quantity, tp
+                    );
+                    match client.post_signed("/fapi/v1/algoOrder", &tp_params).await {
+                        Ok(r) => {
+                            let algo_id = r.get("algoId").and_then(|v| v.as_i64()).unwrap_or(0);
+                            sl_tp_report.push_str(&format!(
+                                "\n| Take Profit | {} @ {} (Algo #{}) ✅ |",
+                                close_side, tp, algo_id
+                            ));
+                        }
+                        Err(e) => {
+                            sl_tp_report.push_str(&format!("\n| Take Profit | ❌ Failed: {} |", e))
+                        }
                     }
-                    Err(e) => sl_tp_report.push_str(&format!("\n| Take Profit | ❌ Failed: {} |", e)),
                 }
+            } else {
+                // Order NOT filled yet (LIMIT pending) — warn user to set SL/TP manually after fill
+                sl_tp_report.push_str(&format!(
+                    "\n| ⚠️ SL/TP | Order status **{}** — SL/TP NOT set. Place them manually after fill using `futures_set_stop_loss` / `futures_set_take_profit`. |",
+                    status
+                ));
             }
         }
 
         // ═══ STEP 8: Build report ═══
-        let price_display = if order_type == "LIMIT" { format!("{}", limit_price) } else { "N/A (market)".to_string() };
+        let price_display = if order_type == "LIMIT" {
+            format!("{}", limit_price)
+        } else {
+            "N/A (market)".to_string()
+        };
 
         Ok(format!(
             "## ✅ Smart Execute — {}\n\n{}\n\n\
@@ -453,26 +575,50 @@ impl TradingPlugin {
              | Spread | {:.2} bps |\n| Est. Impact | {:.2} bps |\n\
              | Est. Savings | {:.2} bps |{}\n\n\
              📊 Pipeline: Orderbook → FlashLimit({}) → Impact({:.2} bps) → {} → Execute",
-            symbol, execution_note, symbol, side_str_param, order_type,
-            quantity, price_display, exec_qty, avg_price, fill_status, order_id,
-            spread_f64, est_slippage, savings_bps, sl_tp_report,
-            route_str, est_slippage, order_type
+            symbol,
+            execution_note,
+            symbol,
+            side_str_param,
+            order_type,
+            quantity,
+            price_display,
+            exec_qty,
+            avg_price,
+            fill_status,
+            order_id,
+            spread_f64,
+            est_slippage,
+            savings_bps,
+            sl_tp_report,
+            route_str,
+            est_slippage,
+            order_type
         ))
     }
 
     async fn place_order(&self, args: &Value) -> anyhow::Result<String> {
-        let symbol = args["symbol"].as_str()
+        let symbol = args["symbol"]
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("symbol is required"))?;
-        let side = Self::parse_side(args["side"].as_str()
-            .ok_or_else(|| anyhow::anyhow!("side is required (BUY/SELL)"))?)?;
-        let quantity: Decimal = args["quantity"].as_str()
+        let side = Self::parse_side(
+            args["side"]
+                .as_str()
+                .ok_or_else(|| anyhow::anyhow!("side is required (BUY/SELL)"))?,
+        )?;
+        let quantity: Decimal = args["quantity"]
+            .as_str()
             .and_then(|s| s.parse().ok())
-            .or_else(|| args["quantity"].as_f64().and_then(|f| Decimal::from_f64_retain(f)))
+            .or_else(|| args["quantity"].as_f64().and_then(Decimal::from_f64_retain))
             .ok_or_else(|| anyhow::anyhow!("quantity is required"))?;
-        let order_type = args["order_type"].as_str().unwrap_or("MARKET").to_uppercase();
-        let price: Option<Decimal> = args["price"].as_str()
+        let order_type = args["order_type"]
+            .as_str()
+            .or_else(|| args["type"].as_str())
+            .unwrap_or("MARKET")
+            .to_uppercase();
+        let price: Option<Decimal> = args["price"]
+            .as_str()
             .and_then(|s| s.parse().ok())
-            .or_else(|| args["price"].as_f64().and_then(|f| Decimal::from_f64_retain(f)));
+            .or_else(|| args["price"].as_f64().and_then(Decimal::from_f64_retain));
         let reduce_only = args["reduce_only"].as_bool().unwrap_or(false);
 
         if quantity <= Decimal::ZERO {
@@ -484,22 +630,36 @@ impl TradingPlugin {
         let order_req = match order_type.as_str() {
             "MARKET" => {
                 let mut req = NewOrderRequest::market(symbol, side, quantity);
-                if reduce_only { req = req.with_reduce_only(); }
+                if reduce_only {
+                    req = req.with_reduce_only();
+                }
                 req
             }
             "LIMIT" => {
-                let limit_price = price
-                    .ok_or_else(|| anyhow::anyhow!("price is required for LIMIT orders"))?;
+                let limit_price =
+                    price.ok_or_else(|| anyhow::anyhow!("price is required for LIMIT orders"))?;
                 let mut req = NewOrderRequest::limit(symbol, side, quantity, limit_price);
-                if reduce_only { req = req.with_reduce_only(); }
+                if reduce_only {
+                    req = req.with_reduce_only();
+                }
                 req
             }
             "TRAILING_STOP_MARKET" => {
-                let callback_rate: Decimal = args["callback_rate"].as_str()
+                let callback_rate: Decimal = args["callback_rate"]
+                    .as_str()
                     .and_then(|s| s.parse().ok())
-                    .or_else(|| args["callback_rate"].as_f64().and_then(|f| Decimal::from_f64_retain(f)))
-                    .ok_or_else(|| anyhow::anyhow!("callback_rate is required for TRAILING_STOP_MARKET (0.1-5.0%)"))?;
-                let mut req = NewOrderRequest {
+                    .or_else(|| {
+                        args["callback_rate"]
+                            .as_f64()
+                            .and_then(Decimal::from_f64_retain)
+                    })
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "callback_rate is required for TRAILING_STOP_MARKET (0.1-5.0%)"
+                        )
+                    })?;
+
+                NewOrderRequest {
                     symbol: symbol.to_string(),
                     side,
                     r#type: OrderType::TrailingStopMarket,
@@ -513,15 +673,20 @@ impl TradingPlugin {
                     working_type: Some(WorkingType::MarkPrice),
                     new_client_order_id: None,
                     callback_rate: Some(callback_rate),
-                };
-                req
+                }
             }
             "STOP_MARKET" => {
-                let stop_price: Decimal = args["stop_price"].as_str()
+                let stop_price: Decimal = args["stop_price"]
+                    .as_str()
                     .and_then(|s| s.parse().ok())
-                    .or_else(|| args["stop_price"].as_f64().and_then(|f| Decimal::from_f64_retain(f)))
+                    .or_else(|| {
+                        args["stop_price"]
+                            .as_f64()
+                            .and_then(Decimal::from_f64_retain)
+                    })
                     .ok_or_else(|| anyhow::anyhow!("stop_price is required for STOP_MARKET"))?;
-                let mut req = NewOrderRequest {
+
+                NewOrderRequest {
                     symbol: symbol.to_string(),
                     side,
                     r#type: OrderType::StopMarket,
@@ -535,23 +700,110 @@ impl TradingPlugin {
                     working_type: Some(WorkingType::MarkPrice),
                     new_client_order_id: None,
                     callback_rate: None,
-                };
-                req
+                }
             }
-            other => anyhow::bail!("Unsupported order_type '{}'. Use MARKET, LIMIT, STOP_MARKET, or TRAILING_STOP_MARKET.", other),
+            "TAKE_PROFIT_MARKET" => {
+                let stop_price: Decimal = args["stop_price"]
+                    .as_str()
+                    .and_then(|s| s.parse().ok())
+                    .or_else(|| {
+                        args["stop_price"]
+                            .as_f64()
+                            .and_then(Decimal::from_f64_retain)
+                    })
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("stop_price is required for TAKE_PROFIT_MARKET")
+                    })?;
+
+                NewOrderRequest {
+                    symbol: symbol.to_string(),
+                    side,
+                    r#type: OrderType::TakeProfitMarket,
+                    time_in_force: None,
+                    quantity: Some(quantity),
+                    price: None,
+                    stop_price: Some(stop_price),
+                    close_position: None,
+                    reduce_only: if reduce_only { Some(true) } else { None },
+                    position_side: None,
+                    working_type: Some(WorkingType::MarkPrice),
+                    new_client_order_id: None,
+                    callback_rate: None,
+                }
+            }
+            other => anyhow::bail!(
+                "Unsupported order_type '{}'. Use MARKET, LIMIT, STOP_MARKET, TAKE_PROFIT_MARKET, or TRAILING_STOP_MARKET.",
+                other
+            ),
         };
 
         let params = order_req.to_query();
+
+        // STOP_MARKET and TAKE_PROFIT_MARKET must go via algoOrder endpoint
+        if matches!(order_type.as_str(), "STOP_MARKET" | "TAKE_PROFIT_MARKET") {
+            let side_str = match side {
+                Side::Buy => "BUY",
+                Side::Sell => "SELL",
+            };
+            let trigger_price = args["stop_price"]
+                .as_str()
+                .or_else(|| {
+                    args["stop_price"]
+                        .as_f64()
+                        .map(|f| f.to_string().leak() as &str)
+                })
+                .unwrap_or("0");
+            let mut reduce_param = String::new();
+            if reduce_only {
+                reduce_param = "&reduceOnly=true".to_string();
+            }
+            let algo_params = format!(
+                "algoType=CONDITIONAL&symbol={}&side={}&type={}&quantity={}&triggerPrice={}&workingType=MARK_PRICE{}",
+                symbol, side_str, order_type, quantity, trigger_price, reduce_param
+            );
+            let raw = client
+                .post_signed("/fapi/v1/algoOrder", &algo_params)
+                .await
+                .map_err(|e| anyhow::anyhow!("Algo order failed: {}", e))?;
+            let algo_id = raw.get("algoId").and_then(|v| v.as_i64()).unwrap_or(0);
+            let success = raw
+                .get("success")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            return Ok(format!(
+                "✅ **Algo Order Placed**\n\n\
+                 | Field | Value |\n\
+                 |-------|-------|\n\
+                 | Algo ID | {} |\n\
+                 | Symbol | {} |\n\
+                 | Side | {} |\n\
+                 | Type | {} (Conditional) |\n\
+                 | Quantity | {} |\n\
+                 | Trigger Price | {} |\n\
+                 | Success | {} |",
+                algo_id, symbol, side_str, order_type, quantity, trigger_price, success
+            ));
+        }
+
         let raw = client.post_signed("/fapi/v1/order", &params).await?;
 
         let order_id = raw.get("orderId").and_then(|v| v.as_i64()).unwrap_or(0);
-        let status = raw.get("status").and_then(|v| v.as_str()).unwrap_or("UNKNOWN");
+        let status = raw
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("UNKNOWN");
         let sym = raw.get("symbol").and_then(|v| v.as_str()).unwrap_or(symbol);
         let sd = raw.get("side").and_then(|v| v.as_str()).unwrap_or("?");
         let orig_qty = raw.get("origQty").and_then(|v| v.as_str()).unwrap_or("0");
-        let exec_qty = raw.get("executedQty").and_then(|v| v.as_str()).unwrap_or("0");
+        let exec_qty = raw
+            .get("executedQty")
+            .and_then(|v| v.as_str())
+            .unwrap_or("0");
         let avg_price = raw.get("avgPrice").and_then(|v| v.as_str()).unwrap_or("-");
-        let ot = raw.get("type").and_then(|v| v.as_str()).unwrap_or(&order_type);
+        let ot = raw
+            .get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or(&order_type);
 
         Ok(format!(
             "✅ **Order Placed**\n\n\
@@ -571,7 +823,8 @@ impl TradingPlugin {
     }
 
     async fn cancel_orders(&self, args: &Value) -> anyhow::Result<String> {
-        let symbol = args["symbol"].as_str()
+        let symbol = args["symbol"]
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("symbol is required"))?;
         let client = self.get_client().await?;
 
@@ -584,20 +837,105 @@ impl TradingPlugin {
         let mut msg = format!("🗑️ **Cancel Orders for {}**\n\n", symbol);
 
         match std_result {
-            Ok(cancelled) => msg.push_str(&format!("- Standard orders cancelled: {}\n", cancelled.len())),
+            Ok(cancelled) => msg.push_str(&format!(
+                "- Standard orders cancelled: {}\n",
+                cancelled.len()
+            )),
             Err(e) => msg.push_str(&format!("- Standard cancel: {}\n", e)),
         }
 
         match sltp_result {
-            Ok(cancelled) => msg.push_str(&format!("- SL/TP orders cancelled: {}\n", cancelled.len())),
+            Ok(cancelled) => {
+                msg.push_str(&format!("- SL/TP orders cancelled: {}\n", cancelled.len()))
+            }
             Err(e) => msg.push_str(&format!("- SL/TP cancel: {}\n", e)),
         }
 
         Ok(msg)
     }
 
+    /// List open algo (SL/TP/Trailing) orders for a symbol.
+    async fn list_algo_orders(&self, args: &Value) -> anyhow::Result<String> {
+        let symbol = args["symbol"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("symbol is required"))?;
+        let client = self.get_client().await?;
+
+        let open = AlgoOrdersClient::list_open_algo_orders(&client, symbol).await?;
+
+        let orders = open.as_array();
+        match orders {
+            Some(orders) if orders.is_empty() => {
+                Ok(format!("📋 No open algo orders for {}", symbol))
+            }
+            Some(orders) => {
+                let mut msg = format!(
+                    "📋 **Open Algo Orders for {}** ({} total)\n\n",
+                    symbol,
+                    orders.len()
+                );
+                msg.push_str("| Algo ID | Type | Side | Trigger | Qty | Status |\n");
+                msg.push_str("|---------|------|------|---------|-----|--------|\n");
+                for o in orders {
+                    let algo_id = o.get("algoId").and_then(|v| v.as_i64()).unwrap_or(0);
+                    let order_type = o.get("orderType").and_then(|v| v.as_str()).unwrap_or("?");
+                    let side = o.get("side").and_then(|v| v.as_str()).unwrap_or("?");
+                    let trigger = o
+                        .get("triggerPrice")
+                        .and_then(|v| v.as_str())
+                        .or_else(|| o.get("stopPrice").and_then(|v| v.as_str()))
+                        .unwrap_or("—");
+                    let qty = o.get("origQty").and_then(|v| v.as_str()).unwrap_or("—");
+                    let status = o
+                        .get("algoStatus")
+                        .and_then(|v| v.as_str())
+                        .or_else(|| o.get("status").and_then(|v| v.as_str()))
+                        .unwrap_or("?");
+                    msg.push_str(&format!(
+                        "| {} | {} | {} | {} | {} | {} |\n",
+                        algo_id, order_type, side, trigger, qty, status
+                    ));
+                }
+                msg.push_str("\n💡 Use `futures_cancel_algo_orders` with algo_id to cancel.");
+                Ok(msg)
+            }
+            None => Ok(format!("📋 Algo order response: {}", open)),
+        }
+    }
+
+    /// Cancel algo (SL/TP/Trailing) orders by algo_id or all for symbol.
+    async fn cancel_algo_orders(&self, args: &Value) -> anyhow::Result<String> {
+        let symbol = args["symbol"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("symbol is required"))?;
+        let client = self.get_client().await?;
+
+        if let Some(algo_id) = args.get("algo_id").and_then(|v| v.as_i64()) {
+            // Cancel specific algo order
+            AlgoOrdersClient::cancel_algo_order(&client, Some(algo_id), None).await?;
+            Ok(format!(
+                "✅ Cancelled algo order #{} for {}",
+                algo_id, symbol
+            ))
+        } else {
+            // Cancel ALL algo orders for symbol
+            let results =
+                AlgoOrdersClient::cancel_all_algo_orders_for_symbol(&client, symbol).await?;
+            if results.is_empty() {
+                Ok(format!("📋 No algo orders to cancel for {}", symbol))
+            } else {
+                Ok(format!(
+                    "🗑️ Cancelled {} algo order(s) for {}",
+                    results.len(),
+                    symbol
+                ))
+            }
+        }
+    }
+
     async fn close_position(&self, args: &Value) -> anyhow::Result<String> {
-        let symbol = args["symbol"].as_str()
+        let symbol = args["symbol"]
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("symbol is required"))?;
         let client = self.get_client().await?;
 
@@ -605,7 +943,8 @@ impl TradingPlugin {
         let params = format!("symbol={}", symbol);
         let raw = client.get_signed("/fapi/v3/positionRisk", &params).await?;
 
-        let positions = raw.as_array()
+        let positions = raw
+            .as_array()
             .ok_or_else(|| anyhow::anyhow!("Unexpected response format"))?;
 
         let position = positions.iter().find(|p| {
@@ -620,12 +959,18 @@ impl TradingPlugin {
             None => return Ok(format!("📊 No open position for {}", symbol)),
         };
 
-        let amt: Decimal = position.get("positionAmt")
-            .and_then(|v| v.as_str()).and_then(|s| s.parse().ok())
+        let amt: Decimal = position
+            .get("positionAmt")
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse().ok())
             .ok_or_else(|| anyhow::anyhow!("Cannot parse positionAmt"))?;
         let abs_qty = amt.abs();
 
-        let close_side = if amt > Decimal::ZERO { Side::Sell } else { Side::Buy };
+        let close_side = if amt > Decimal::ZERO {
+            Side::Sell
+        } else {
+            Side::Buy
+        };
 
         // Cancel existing orders first
         let _ = OrdersClient::cancel_all_orders(&client, symbol).await;
@@ -638,7 +983,10 @@ impl TradingPlugin {
 
         let order_id = raw.get("orderId").and_then(|v| v.as_i64()).unwrap_or(0);
         let status = raw.get("status").and_then(|v| v.as_str()).unwrap_or("?");
-        let exec_qty = raw.get("executedQty").and_then(|v| v.as_str()).unwrap_or("0");
+        let exec_qty = raw
+            .get("executedQty")
+            .and_then(|v| v.as_str())
+            .unwrap_or("0");
         let avg_price = raw.get("avgPrice").and_then(|v| v.as_str()).unwrap_or("-");
 
         Ok(format!(
@@ -651,33 +999,46 @@ impl TradingPlugin {
              | Executed | {} |\n\
              | Avg Price | {} |\n\
              | Status | {} |",
-            symbol, abs_qty, if amt > Decimal::ZERO { "LONG" } else { "SHORT" },
-            order_id, exec_qty, avg_price, status
+            symbol,
+            abs_qty,
+            if amt > Decimal::ZERO { "LONG" } else { "SHORT" },
+            order_id,
+            exec_qty,
+            avg_price,
+            status
         ))
     }
 
     async fn set_stop_loss(&self, args: &Value) -> anyhow::Result<String> {
-        let symbol = args["symbol"].as_str()
+        let symbol = args["symbol"]
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("symbol is required"))?;
-        let trigger_price: Decimal = args["trigger_price"].as_str()
+        let trigger_price: Decimal = args["trigger_price"]
+            .as_str()
             .and_then(|s| s.parse().ok())
-            .or_else(|| args["trigger_price"].as_f64().and_then(|f| Decimal::from_f64_retain(f)))
+            .or_else(|| {
+                args["trigger_price"]
+                    .as_f64()
+                    .and_then(Decimal::from_f64_retain)
+            })
             .ok_or_else(|| anyhow::anyhow!("trigger_price is required"))?;
         let side = Self::parse_side(args["side"].as_str().unwrap_or("SELL"))?;
-        let close_position = args["close_position"].as_bool().unwrap_or(true);
+        let _close_position = args["close_position"].as_bool().unwrap_or(true);
 
         let client = self.get_client().await?;
         let close_position = args["close_position"].as_bool().unwrap_or(true);
-        let quantity: Option<Decimal> = args["quantity"].as_str()
+        let quantity: Option<Decimal> = args["quantity"]
+            .as_str()
             .and_then(|s| s.parse().ok())
-            .or_else(|| args["quantity"].as_f64().and_then(|f| Decimal::from_f64_retain(f)));
+            .or_else(|| args["quantity"].as_f64().and_then(Decimal::from_f64_retain));
 
         let resp = if let Some(qty) = quantity {
             // Partial stop-loss with specific quantity
             AlgoOrdersClient::stop_loss_partial(&client, symbol, side, trigger_price, qty).await?
         } else {
             // Full close position stop-loss
-            AlgoOrdersClient::stop_loss(&client, symbol, trigger_price, side, close_position).await?
+            AlgoOrdersClient::stop_loss(&client, symbol, trigger_price, side, close_position)
+                .await?
         };
 
         if resp.is_success() {
@@ -689,29 +1050,49 @@ impl TradingPlugin {
                  | Trigger | {} |\n\
                  | Side | {} |\n\
                  | Algo ID | {} |\n\
-                 | Close All | {} |",
-                symbol, trigger_price, side, resp.algo_id, close_position
+                 | Client Algo ID | {} |\n\
+                 | Code | {} |",
+                symbol, trigger_price, side, resp.algo_id, resp.client_algo_id, resp.code
             ))
         } else {
             Ok(format!(
-                "⚠️ **Stop-Loss Rejected**\n\nCode: {}\nMessage: {}",
-                resp.code, resp.msg
+                "⚠️ **Stop-Loss Response**\n\n\
+                 | Field | Value |\n\
+                 |-------|-------|\n\
+                 | Algo ID | {} |\n\
+                 | Code | {} |\n\
+                 | Message | {} |\n\
+                 | Client ID | {} |\n\
+                 | is_success | {} |",
+                resp.algo_id,
+                resp.code,
+                resp.msg,
+                resp.client_algo_id,
+                resp.is_success()
             ))
         }
     }
 
     async fn set_take_profit(&self, args: &Value) -> anyhow::Result<String> {
-        let symbol = args["symbol"].as_str()
+        let symbol = args["symbol"]
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("symbol is required"))?;
-        let trigger_price: Decimal = args["trigger_price"].as_str()
+        let trigger_price: Decimal = args["trigger_price"]
+            .as_str()
             .and_then(|s| s.parse().ok())
-            .or_else(|| args["trigger_price"].as_f64().and_then(|f| Decimal::from_f64_retain(f)))
+            .or_else(|| {
+                args["trigger_price"]
+                    .as_f64()
+                    .and_then(Decimal::from_f64_retain)
+            })
             .ok_or_else(|| anyhow::anyhow!("trigger_price is required"))?;
         let side = Self::parse_side(args["side"].as_str().unwrap_or("SELL"))?;
         let close_position = args["close_position"].as_bool().unwrap_or(true);
 
         let client = self.get_client().await?;
-        let resp = AlgoOrdersClient::take_profit(&client, symbol, trigger_price, side, close_position).await?;
+        let resp =
+            AlgoOrdersClient::take_profit(&client, symbol, trigger_price, side, close_position)
+                .await?;
 
         if resp.is_success() {
             Ok(format!(
@@ -734,28 +1115,47 @@ impl TradingPlugin {
     }
 
     async fn set_trailing_stop(&self, args: &Value) -> anyhow::Result<String> {
-        let symbol = args["symbol"].as_str()
+        let symbol = args["symbol"]
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("symbol is required"))?;
-        let callback_rate: Decimal = args["callback_rate"].as_str()
+        let callback_rate: Decimal = args["callback_rate"]
+            .as_str()
             .and_then(|s| s.parse().ok())
-            .or_else(|| args["callback_rate"].as_f64().and_then(|f| Decimal::from_f64_retain(f)))
+            .or_else(|| {
+                args["callback_rate"]
+                    .as_f64()
+                    .and_then(Decimal::from_f64_retain)
+            })
             .ok_or_else(|| anyhow::anyhow!("callback_rate is required (0.1-5.0 %)"))?;
         let side = Self::parse_side(args["side"].as_str().unwrap_or("SELL"))?;
-        let quantity: Option<Decimal> = args["quantity"].as_str()
+        let quantity: Option<Decimal> = args["quantity"]
+            .as_str()
             .and_then(|s| s.parse().ok())
-            .or_else(|| args["quantity"].as_f64().and_then(|f| Decimal::from_f64_retain(f)));
-        let activate_price: Option<Decimal> = args["activate_price"].as_str()
+            .or_else(|| args["quantity"].as_f64().and_then(Decimal::from_f64_retain));
+        let activate_price: Option<Decimal> = args["activate_price"]
+            .as_str()
             .and_then(|s| s.parse().ok())
-            .or_else(|| args["activate_price"].as_f64().and_then(|f| Decimal::from_f64_retain(f)));
+            .or_else(|| {
+                args["activate_price"]
+                    .as_f64()
+                    .and_then(Decimal::from_f64_retain)
+            });
 
-        if callback_rate < Decimal::from(1) / Decimal::from(10) || callback_rate > Decimal::from(5) {
+        if callback_rate < Decimal::from(1) / Decimal::from(10) || callback_rate > Decimal::from(5)
+        {
             anyhow::bail!("callback_rate must be between 0.1 and 5.0 percent");
         }
 
         let client = self.get_client().await?;
         let resp = AlgoOrdersClient::trailing_stop(
-            &client, symbol, side, callback_rate, quantity, activate_price,
-        ).await?;
+            &client,
+            symbol,
+            side,
+            callback_rate,
+            quantity,
+            activate_price,
+        )
+        .await?;
 
         if resp.is_success() {
             Ok(format!(
@@ -768,10 +1168,16 @@ impl TradingPlugin {
                  | Quantity | {} |\n\
                  | Algo ID | {} |\n\
                  | Activate Price | {} |",
-                symbol, callback_rate, side,
-                quantity.map(|q| q.to_string()).unwrap_or_else(|| "all".to_string()),
+                symbol,
+                callback_rate,
+                side,
+                quantity
+                    .map(|q| q.to_string())
+                    .unwrap_or_else(|| "all".to_string()),
                 resp.algo_id,
-                activate_price.map(|p| p.to_string()).unwrap_or_else(|| "immediate".to_string())
+                activate_price
+                    .map(|p| p.to_string())
+                    .unwrap_or_else(|| "immediate".to_string())
             ))
         } else {
             Ok(format!(
@@ -940,6 +1346,42 @@ impl ToolPlugin for TradingPlugin {
                         param_type: "string".into(),
                         description: "Trading pair (e.g., BTCUSDT, ORDIUSDT)".into(),
                         required: true,
+                        default: None,
+                        r#enum: None,
+                    },
+                ],
+            },
+            ToolSchema {
+                name: "futures_list_algo_orders".into(),
+                description: "List open algo (SL/TP/Trailing) orders for a symbol. Returns algo IDs needed for cancellation.".into(),
+                parameters: vec![
+                    ParameterSchema {
+                        name: "symbol".into(),
+                        param_type: "string".into(),
+                        description: "Trading pair (e.g., BTCUSDT)".into(),
+                        required: true,
+                        default: None,
+                        r#enum: None,
+                    },
+                ],
+            },
+            ToolSchema {
+                name: "futures_cancel_algo_orders".into(),
+                description: "Cancel open algo (SL/TP/Trailing) orders for a symbol by algo ID or all.".into(),
+                parameters: vec![
+                    ParameterSchema {
+                        name: "symbol".into(),
+                        param_type: "string".into(),
+                        description: "Trading pair (e.g., BTCUSDT)".into(),
+                        required: true,
+                        default: None,
+                        r#enum: None,
+                    },
+                    ParameterSchema {
+                        name: "algo_id".into(),
+                        param_type: "number".into(),
+                        description: "Specific algo order ID to cancel. If omitted, cancels ALL algo orders for the symbol.".into(),
+                        required: false,
                         default: None,
                         r#enum: None,
                     },
@@ -1154,6 +1596,8 @@ impl ToolPlugin for TradingPlugin {
             "futures_set_margin_type" => self.set_margin_type(arguments).await,
             "futures_place_order" => self.place_order(arguments).await,
             "futures_cancel_orders" => self.cancel_orders(arguments).await,
+            "futures_list_algo_orders" => self.list_algo_orders(arguments).await,
+            "futures_cancel_algo_orders" => self.cancel_algo_orders(arguments).await,
             "futures_close_position" => self.close_position(arguments).await,
             "futures_set_stop_loss" => self.set_stop_loss(arguments).await,
             "futures_set_take_profit" => self.set_take_profit(arguments).await,
@@ -1256,7 +1700,8 @@ mod tests {
             "quantity": "0.010"
         });
         // Default max_slippage_bps should be 5.0
-        let max_slippage: f64 = args["max_slippage_bps"].as_str()
+        let max_slippage: f64 = args["max_slippage_bps"]
+            .as_str()
             .and_then(|s| s.parse().ok())
             .or_else(|| args["max_slippage_bps"].as_f64())
             .unwrap_or(5.0);
@@ -1301,10 +1746,15 @@ mod tests {
     fn test_spread_route_decision_flash_limit() {
         // spread ≤ 2 bps → Flash Limit (LIMIT order)
         let spread_f64 = 1.5;
-        let order_type = if spread_f64 <= 2.0 { "LIMIT" }
-            else if spread_f64 <= 10.0 { "LIMIT" }
-            else if spread_f64 <= 25.0 { "MARKET" }
-            else { "HOLD" };
+        let order_type = if spread_f64 <= 2.0 {
+            "LIMIT"
+        } else if spread_f64 <= 10.0 {
+            "LIMIT"
+        } else if spread_f64 <= 25.0 {
+            "MARKET"
+        } else {
+            "HOLD"
+        };
         assert_eq!(order_type, "LIMIT");
     }
 
@@ -1312,10 +1762,15 @@ mod tests {
     fn test_spread_route_decision_adaptive() {
         // 2 < spread ≤ 10 bps → Adaptive Limit
         let spread_f64 = 5.0;
-        let order_type = if spread_f64 <= 2.0 { "FLASH" }
-            else if spread_f64 <= 10.0 { "ADAPTIVE" }
-            else if spread_f64 <= 25.0 { "MARKET" }
-            else { "HOLD" };
+        let order_type = if spread_f64 <= 2.0 {
+            "FLASH"
+        } else if spread_f64 <= 10.0 {
+            "ADAPTIVE"
+        } else if spread_f64 <= 25.0 {
+            "MARKET"
+        } else {
+            "HOLD"
+        };
         assert_eq!(order_type, "ADAPTIVE");
     }
 
@@ -1323,10 +1778,15 @@ mod tests {
     fn test_spread_route_decision_market() {
         // 10 < spread ≤ 25 → Market
         let spread_f64 = 15.0;
-        let order_type = if spread_f64 <= 2.0 { "FLASH" }
-            else if spread_f64 <= 10.0 { "ADAPTIVE" }
-            else if spread_f64 <= 25.0 { "MARKET" }
-            else { "HOLD" };
+        let order_type = if spread_f64 <= 2.0 {
+            "FLASH"
+        } else if spread_f64 <= 10.0 {
+            "ADAPTIVE"
+        } else if spread_f64 <= 25.0 {
+            "MARKET"
+        } else {
+            "HOLD"
+        };
         assert_eq!(order_type, "MARKET");
     }
 
@@ -1334,10 +1794,15 @@ mod tests {
     fn test_spread_route_decision_blocked() {
         // spread > 25 → Blocked
         let spread_f64 = 30.0;
-        let order_type = if spread_f64 <= 2.0 { "FLASH" }
-            else if spread_f64 <= 10.0 { "ADAPTIVE" }
-            else if spread_f64 <= 25.0 { "MARKET" }
-            else { "HOLD" };
+        let order_type = if spread_f64 <= 2.0 {
+            "FLASH"
+        } else if spread_f64 <= 10.0 {
+            "ADAPTIVE"
+        } else if spread_f64 <= 25.0 {
+            "MARKET"
+        } else {
+            "HOLD"
+        };
         assert_eq!(order_type, "HOLD");
     }
 
@@ -1345,7 +1810,10 @@ mod tests {
     fn test_sl_tp_close_side_for_buy() {
         // BUY position → SL/TP should SELL
         let side = Side::Buy;
-        let close_side = match side { Side::Buy => "SELL", Side::Sell => "BUY" };
+        let close_side = match side {
+            Side::Buy => "SELL",
+            Side::Sell => "BUY",
+        };
         assert_eq!(close_side, "SELL");
     }
 
@@ -1353,7 +1821,10 @@ mod tests {
     fn test_sl_tp_close_side_for_sell() {
         // SELL position → SL/TP should BUY
         let side = Side::Sell;
-        let close_side = match side { Side::Buy => "SELL", Side::Sell => "BUY" };
+        let close_side = match side {
+            Side::Buy => "SELL",
+            Side::Sell => "BUY",
+        };
         assert_eq!(close_side, "BUY");
     }
 }

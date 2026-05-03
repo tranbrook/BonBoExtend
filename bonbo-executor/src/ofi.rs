@@ -152,7 +152,11 @@ impl OfiScore {
         let imbalance = if total > 0.0 { bid_liq / total } else { 0.5 };
 
         // Depth skew: (bid - ask) / total
-        let depth_skew = if total > 0.0 { (bid_liq - ask_liq) / total } else { 0.0 };
+        let depth_skew = if total > 0.0 {
+            (bid_liq - ask_liq) / total
+        } else {
+            0.0
+        };
 
         // Wall detection: find largest single level
         let max_bid = bid_levels
@@ -472,7 +476,12 @@ pub async fn execute_ofi(
     let arrival_price = initial_book.mid_price().unwrap_or(Decimal::ONE);
 
     let pre_check = PreTradeCheck::run(
-        symbol, side, total_qty, arrival_price, risk_state, risk_limits,
+        symbol,
+        side,
+        total_qty,
+        arrival_price,
+        risk_state,
+        risk_limits,
     );
     if !pre_check.allowed {
         anyhow::bail!("OFI pre-trade check failed: {:?}", pre_check.reason);
@@ -480,9 +489,13 @@ pub async fn execute_ofi(
 
     tracing::info!(
         "📊 OFI START: {} {:?} {} | thresholds={:.2}/{:.2} | poll={}s max_wait={}s",
-        symbol, side, total_qty,
-        config.buy_threshold, config.strong_buy_threshold,
-        config.poll_interval_secs, config.max_wait_secs,
+        symbol,
+        side,
+        total_qty,
+        config.buy_threshold,
+        config.strong_buy_threshold,
+        config.poll_interval_secs,
+        config.max_wait_secs,
     );
 
     // ── Phase 2: Initialize state ────────────────────────────
@@ -494,7 +507,7 @@ pub async fn execute_ofi(
     let mut unfavorable_polls = 0usize;
     let mut favorable_polls = 0usize;
     let mut rng = SimpleRng::from_seed(start_epoch_ms as u64);
-    let mut total_wait_secs = 0.0f64;
+    let mut _total_wait_secs = 0.0f64;
 
     // Base slice size: equal distribution
     let base_slice_qty = total_qty / Decimal::from(config.max_slices);
@@ -543,12 +556,14 @@ pub async fn execute_ofi(
             unfavorable_polls += 1;
             let jitter = compute_jitter(config.poll_interval_secs, config.jitter_pct, &mut rng);
             let wait = (config.poll_interval_secs as f64 + jitter).max(1.0);
-            total_wait_secs += wait;
+            _total_wait_secs += wait;
 
             if slice_index == 0 {
                 tracing::debug!(
                     "OFI: waiting | {} | imb={:.3} conf={:.2}",
-                    ofi_score.signal, ofi_score.imbalance, ofi_score.confidence,
+                    ofi_score.signal,
+                    ofi_score.imbalance,
+                    ofi_score.confidence,
                 );
             }
 
@@ -587,7 +602,8 @@ pub async fn execute_ofi(
         if est_bps > config.max_slippage_bps {
             tracing::warn!(
                 "OFI: favorable signal but slippage {:.1}bps > max {:.1}bps, skipping",
-                est_bps, config.max_slippage_bps,
+                est_bps,
+                config.max_slippage_bps,
             );
             unfavorable_polls += 1;
             tokio::time::sleep(Duration::from_secs(config.poll_interval_secs)).await;
@@ -635,15 +651,18 @@ pub async fn execute_ofi(
         fills.push(fill);
         slice_index += 1;
 
+        let last_rec = slice_records
+            .last()
+            .expect("slice_records must have entry after push");
         tracing::info!(
             "✅ OFI slice {}: {} @ {} ({:.1}bps, imb={:.3}, {} conf={:.2})",
             slice_index,
-            slice_records.last().unwrap().filled_qty,
-            slice_records.last().unwrap().fill_price,
-            slice_records.last().unwrap().slippage_bps,
-            slice_records.last().unwrap().ofi_score.imbalance,
-            slice_records.last().unwrap().ofi_score.signal,
-            slice_records.last().unwrap().ofi_score.confidence,
+            last_rec.filled_qty,
+            last_rec.fill_price,
+            last_rec.slippage_bps,
+            last_rec.ofi_score.imbalance,
+            last_rec.ofi_score.signal,
+            last_rec.ofi_score.confidence,
         );
 
         // ── Wait for next poll ────────────────────────────────
@@ -654,7 +673,13 @@ pub async fn execute_ofi(
 
     // ── Phase 4: Build report ────────────────────────────────
     let base_report = ExecutionReport::build(
-        symbol, side, "OFI", total_qty, arrival_price, fills, start_wall,
+        symbol,
+        side,
+        "OFI",
+        total_qty,
+        arrival_price,
+        fills,
+        start_wall,
     );
 
     let total_polls = unfavorable_polls + favorable_polls;
@@ -667,7 +692,11 @@ pub async fn execute_ofi(
     let avg_exec_imbalance = if slice_records.is_empty() {
         0.5
     } else {
-        slice_records.iter().map(|r| r.ofi_score.imbalance).sum::<f64>() / slice_records.len() as f64
+        slice_records
+            .iter()
+            .map(|r| r.ofi_score.imbalance)
+            .sum::<f64>()
+            / slice_records.len() as f64
     };
 
     let avg_wait = if slice_records.is_empty() {
@@ -715,8 +744,6 @@ pub async fn execute_ofi(
 
 use crate::utils::compute_jitter;
 
-
-
 // ═══════════════════════════════════════════════════════════════
 // TESTS
 // ═══════════════════════════════════════════════════════════════
@@ -732,14 +759,18 @@ mod tests {
         let mut bids: Vec<PriceLevel> = bid_qtys
             .iter()
             .enumerate()
-            .map(|(i, q)| PriceLevel::new(Decimal::from(100 - i as i64), Decimal::from_str(q).unwrap()))
+            .map(|(i, q)| {
+                PriceLevel::new(Decimal::from(100 - i as i64), Decimal::from_str(q).unwrap())
+            })
             .collect();
         bids.sort_by(|a, b| b.price.cmp(&a.price));
 
         let asks: Vec<PriceLevel> = ask_qtys
             .iter()
             .enumerate()
-            .map(|(i, q)| PriceLevel::new(Decimal::from(101 + i as i64), Decimal::from_str(q).unwrap()))
+            .map(|(i, q)| {
+                PriceLevel::new(Decimal::from(101 + i as i64), Decimal::from_str(q).unwrap())
+            })
             .collect();
 
         OrderBookSnapshot {
@@ -782,7 +813,11 @@ mod tests {
         let book = make_book(&["100", "100", "100"], &["100", "100", "100"]);
         let score = OfiScore::from_book(&book, 3);
 
-        assert!((score.imbalance - 0.5).abs() < 0.01, "balanced = 0.5, got {}", score.imbalance);
+        assert!(
+            (score.imbalance - 0.5).abs() < 0.01,
+            "balanced = 0.5, got {}",
+            score.imbalance
+        );
         assert!((score.depth_skew).abs() < 0.01);
         assert_eq!(score.signal, OfiSignal::Neutral);
     }
@@ -794,7 +829,10 @@ mod tests {
 
         assert!(score.imbalance > 0.6, "bid-heavy, got {}", score.imbalance);
         assert!(score.depth_skew > 0.2);
-        assert!(matches!(score.signal, OfiSignal::StrongBuy | OfiSignal::Buy));
+        assert!(matches!(
+            score.signal,
+            OfiSignal::StrongBuy | OfiSignal::Buy
+        ));
     }
 
     #[test]
@@ -804,7 +842,10 @@ mod tests {
 
         assert!(score.imbalance < 0.4, "ask-heavy, got {}", score.imbalance);
         assert!(score.depth_skew < -0.2);
-        assert!(matches!(score.signal, OfiSignal::StrongSell | OfiSignal::Sell));
+        assert!(matches!(
+            score.signal,
+            OfiSignal::StrongSell | OfiSignal::Sell
+        ));
     }
 
     #[test]
@@ -813,7 +854,11 @@ mod tests {
         let book = make_book(&["5000", "100", "100"], &["100", "100", "100"]);
         let score = OfiScore::from_book(&book, 3);
 
-        assert!(score.wall_strength > 0.5, "should detect wall: {}", score.wall_strength);
+        assert!(
+            score.wall_strength > 0.5,
+            "should detect wall: {}",
+            score.wall_strength
+        );
         assert_eq!(score.wall_side, Side::Buy);
     }
 
@@ -846,7 +891,10 @@ mod tests {
             tracker.push(score);
         }
 
-        assert!(tracker.ema_imbalance > 0.5, "EMA should drift towards buy-heavy");
+        assert!(
+            tracker.ema_imbalance > 0.5,
+            "EMA should drift towards buy-heavy"
+        );
     }
 
     #[test]
@@ -877,7 +925,11 @@ mod tests {
         }
 
         // Flow velocity should be positive (buy pressure increasing)
-        assert!(tracker.flow_velocity > 0.0, "velocity should be positive: {}", tracker.flow_velocity);
+        assert!(
+            tracker.flow_velocity > 0.0,
+            "velocity should be positive: {}",
+            tracker.flow_velocity
+        );
         assert!(tracker.accelerating(Side::Buy));
         assert!(!tracker.accelerating(Side::Sell));
     }
@@ -896,7 +948,10 @@ mod tests {
     #[test]
     fn test_ofi_config_patient() {
         let cfg = OfiConfig::patient();
-        assert!(cfg.buy_threshold > 0.55, "patient waits for stronger signal");
+        assert!(
+            cfg.buy_threshold > 0.55,
+            "patient waits for stronger signal"
+        );
         assert!(cfg.consistency_samples >= 3);
     }
 

@@ -249,4 +249,104 @@ mod tests {
         let all = DataTimeFrame::all();
         assert_eq!(all.len(), 7);
     }
+
+    #[test]
+    fn test_candle_to_ohlcv_conversion() {
+        let candle = MarketDataCandle {
+            symbol: "ETHUSDT".to_string(),
+            timeframe: "4h".to_string(),
+            timestamp: 1700000000000,
+            open: 2000.0,
+            high: 2100.0,
+            low: 1950.0,
+            close: 2050.0,
+            volume: 500.0,
+        };
+        let ohlcv: bonbo_ta::OhlcvCandle = candle.clone().into();
+        assert_eq!(ohlcv.timestamp, candle.timestamp);
+        assert_eq!(ohlcv.open, candle.open);
+        assert_eq!(ohlcv.high, candle.high);
+        assert_eq!(ohlcv.low, candle.low);
+        assert_eq!(ohlcv.close, candle.close);
+        assert_eq!(ohlcv.volume, candle.volume);
+    }
+
+    #[test]
+    fn test_candle_ref_to_ohlcv_conversion() {
+        let candle = MarketDataCandle {
+            symbol: "BTCUSDT".to_string(),
+            timeframe: "1h".to_string(),
+            timestamp: 1700000000000,
+            open: 40000.0,
+            high: 41000.0,
+            low: 39500.0,
+            close: 40500.0,
+            volume: 1000.0,
+        };
+        let ohlcv: bonbo_ta::OhlcvCandle = (&candle).into();
+        assert_eq!(ohlcv.timestamp, candle.timestamp);
+        assert_eq!(ohlcv.close, 40500.0);
+    }
+
+    #[test]
+    fn test_to_ohlcv_slice() {
+        let candles = vec![
+            MarketDataCandle {
+                symbol: "BTCUSDT".to_string(),
+                timeframe: "1h".to_string(),
+                timestamp: 1000,
+                open: 100.0,
+                high: 110.0,
+                low: 90.0,
+                close: 105.0,
+                volume: 50.0,
+            },
+            MarketDataCandle {
+                symbol: "BTCUSDT".to_string(),
+                timeframe: "1h".to_string(),
+                timestamp: 2000,
+                open: 105.0,
+                high: 115.0,
+                low: 100.0,
+                close: 110.0,
+                volume: 60.0,
+            },
+        ];
+        let ohlcvs = to_ohlcv(&candles);
+        assert_eq!(ohlcvs.len(), 2);
+        assert_eq!(ohlcvs[0].close, 105.0);
+        assert_eq!(ohlcvs[1].volume, 60.0);
+    }
+
+    #[test]
+    fn test_to_ohlcv_empty() {
+        let candles: Vec<MarketDataCandle> = vec![];
+        let ohlcvs = to_ohlcv(&candles);
+        assert!(ohlcvs.is_empty());
+    }
+
+    #[test]
+    fn test_data_result_fetched_at_reasonable() {
+        let result = DataResult::new(vec![], "BTCUSDT", "1h");
+        // fetched_at should be a recent unix timestamp in ms (after year 2020)
+        assert!(result.fetched_at > 1577836800000); // 2020-01-01
+    }
+
+    #[test]
+    fn test_candle_serialization_roundtrip() {
+        let candle = MarketDataCandle {
+            symbol: "SOLUSDT".to_string(),
+            timeframe: "15m".to_string(),
+            timestamp: 1700000000000,
+            open: 100.0,
+            high: 105.0,
+            low: 98.0,
+            close: 103.0,
+            volume: 250.0,
+        };
+        let json = serde_json::to_string(&candle).expect("serialize");
+        let back: MarketDataCandle = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back.symbol, candle.symbol);
+        assert_eq!(back.close, candle.close);
+    }
 }

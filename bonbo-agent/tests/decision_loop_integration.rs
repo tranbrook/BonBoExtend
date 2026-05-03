@@ -2,18 +2,15 @@
 
 use bonbo_agent::config::AgentConfig;
 use bonbo_agent::decision_loop::DecisionLoop;
-use bonbo_agent::mock_mcp::MockMcpClient;
 use bonbo_agent::mcp_client::*;
-use bonbo_agent::{DryRunOrderExecutor, OrderExecutor};
+use bonbo_agent::mock_mcp::MockMcpClient;
 use bonbo_agent::state_machine::AgentState;
+use bonbo_agent::{DryRunOrderExecutor, OrderExecutor};
 use rust_decimal::Decimal;
 
 fn test_config() -> AgentConfig {
     let mut config = AgentConfig::testnet_default();
-    config.watchlist.symbols = vec![
-        "BTCUSDT".to_string(),
-        "ETHUSDT".to_string(),
-    ];
+    config.watchlist.symbols = vec!["BTCUSDT".to_string(), "ETHUSDT".to_string()];
     config.risk.max_leverage = 3;
     config.strategy.min_quant_score = 50;
     config

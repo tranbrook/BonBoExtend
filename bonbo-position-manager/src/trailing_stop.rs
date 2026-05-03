@@ -32,7 +32,7 @@ pub struct TrailingStopManager {
 impl Default for TrailingStopManager {
     fn default() -> Self {
         Self {
-            phase1_threshold: Decimal::ONE,      // +1%
+            phase1_threshold: Decimal::ONE,       // +1%
             phase2_threshold: Decimal::new(3, 0), // +3%
             phase3_trail: Decimal::new(15, 1),    // -1.5%
             phase4_threshold: Decimal::new(5, 0), // +5%
@@ -72,20 +72,24 @@ impl TrailingStopManager {
         let phase = self.current_phase(position, current_price);
 
         let new_sl = match phase {
-            TrailPhase::Fixed => return None, // Don't move SL
+            TrailPhase::Fixed => return None,              // Don't move SL
             TrailPhase::Breakeven => position.entry_price, // Move to breakeven
             TrailPhase::Trail1 => {
                 if position.is_long {
-                    current_price * (Decimal::ONE_HUNDRED - self.phase3_trail) / Decimal::ONE_HUNDRED
+                    current_price * (Decimal::ONE_HUNDRED - self.phase3_trail)
+                        / Decimal::ONE_HUNDRED
                 } else {
-                    current_price * (Decimal::ONE_HUNDRED + self.phase3_trail) / Decimal::ONE_HUNDRED
+                    current_price * (Decimal::ONE_HUNDRED + self.phase3_trail)
+                        / Decimal::ONE_HUNDRED
                 }
             }
             TrailPhase::Trail2 => {
                 if position.is_long {
-                    current_price * (Decimal::ONE_HUNDRED - self.phase4_trail) / Decimal::ONE_HUNDRED
+                    current_price * (Decimal::ONE_HUNDRED - self.phase4_trail)
+                        / Decimal::ONE_HUNDRED
                 } else {
-                    current_price * (Decimal::ONE_HUNDRED + self.phase4_trail) / Decimal::ONE_HUNDRED
+                    current_price * (Decimal::ONE_HUNDRED + self.phase4_trail)
+                        / Decimal::ONE_HUNDRED
                 }
             }
         };

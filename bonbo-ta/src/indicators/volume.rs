@@ -156,7 +156,7 @@ pub struct VolumeBucket {
 /// Volume Profile analysis result.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VolumeProfile {
-    /// Price buckets sorted by price (low to high).
+    /// Price buckets sorted by volume (descending — highest volume first).
     pub buckets: Vec<VolumeBucket>,
     /// Point of Control — the price level with highest volume.
     pub poc_price: f64,

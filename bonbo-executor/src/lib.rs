@@ -38,26 +38,33 @@ pub mod async_dispatcher;
 pub mod dry_run;
 pub mod execution_algo;
 pub mod execution_errors;
+#[cfg(feature = "flash")]
 pub mod flash_limit;
 pub mod idempotency;
+#[cfg(feature = "is")]
 pub mod is;
 pub mod market_impact;
+#[cfg(feature = "ofi")]
 pub mod ofi;
 pub mod optimal_slicer;
 pub mod order_builder;
 pub mod orderbook;
+#[cfg(feature = "pov")]
 pub mod pov;
 pub mod risk_guards;
 pub mod saga;
 pub mod smart_execution;
+#[cfg(feature = "smart-market")]
 pub mod smart_market;
+#[cfg(feature = "twap")]
 pub mod twap;
 pub mod utils;
+#[cfg(feature = "vwap")]
 pub mod vwap;
 
 pub use async_dispatcher::{
-    AsyncOrderDispatcher, ConcurrentBatchResult, ConcurrentSliceConfig,
-    ConcurrentSliceExecutor, DispatchedResult, OrderRateGate, OrderTask,
+    AsyncOrderDispatcher, ConcurrentBatchResult, ConcurrentSliceConfig, ConcurrentSliceExecutor,
+    DispatchedResult, OrderRateGate, OrderTask,
 };
 pub use dry_run::DryRunExecutor;
 pub use execution_algo::{
@@ -68,50 +75,43 @@ pub use execution_errors::{
     BinanceErrorCode, ErrorDecision, ExecutionError, PartialFillResult, PartialFillStrategy,
     decide, handle_partial_fill,
 };
+#[cfg(feature = "flash")]
 pub use flash_limit::{
-    execute_flash_limit, analyze_spread, FlashLimitConfig, FlashLimitResult,
-    OrderRoute, SpreadAnalysis, SpreadTracker,
+    FlashLimitConfig, FlashLimitResult, OrderRoute, SpreadAnalysis, SpreadTracker, analyze_spread,
+    execute_flash_limit,
 };
 pub use idempotency::IdempotencyTracker;
-pub use is::{
-    IsConfig, IsDecomposition, IsReport, IsSliceRecord, OptimalTrajectory,
-    execute_is,
-};
+#[cfg(feature = "is")]
+pub use is::{IsConfig, IsDecomposition, IsReport, IsSliceRecord, OptimalTrajectory, execute_is};
 pub use market_impact::{
     CascadeDetection, ImpactEstimate, ImpactParams, SlippageAtRisk, TransientImpactState,
     compute_slippage_at_risk, estimate_impact,
 };
-pub use ofi::{
-    OfiConfig, OfiReport, OfiScore, OfiSignal, OfiSliceRecord, OfiTracker,
-    execute_ofi,
+#[cfg(feature = "ofi")]
+pub use ofi::{OfiConfig, OfiReport, OfiScore, OfiSignal, OfiSliceRecord, OfiTracker, execute_ofi};
+pub use optimal_slicer::{
+    OptimalSliceConfig, OptimalSliceResult, OptimalSlicer, SliceAdjustment, SliceTransientState,
 };
 pub use order_builder::OrderBuilder;
-pub use orderbook::{
-    OrderBookSnapshot, PriceLevel, Side as ExecutionSide, SlippageEstimate,
-};
+pub use orderbook::{OrderBookSnapshot, PriceLevel, Side as ExecutionSide, SlippageEstimate};
+#[cfg(feature = "pov")]
 pub use pov::{
-    AggTrade, PovConfig, PovReport, PovSliceRecord, TradeFetcher, VolumeWindow,
-    execute_pov,
+    AggTrade, PovConfig, PovReport, PovSliceRecord, TradeFetcher, VolumeWindow, execute_pov,
 };
 pub use risk_guards::{
-    CumulativeRiskState, ExecutionRiskLimits, PreTradeCheck, RiskCheckResult,
-    activate_kill_switch, deactivate_kill_switch, is_kill_switch_active,
+    CumulativeRiskState, ExecutionRiskLimits, PreTradeCheck, RiskCheckResult, activate_kill_switch,
+    deactivate_kill_switch, is_kill_switch_active,
 };
 pub use saga::{SagaExecutor, SagaResult};
 pub use smart_execution::{ExecutionAlgo, ExecutionParams, select_optimal_algo};
+#[cfg(feature = "smart-market")]
 pub use smart_market::{
-    BookState, SmartMarketConfig, SmartMarketPhaseRecord, SmartMarketReport,
-    execute_smart_market,
+    BookState, SmartMarketConfig, SmartMarketPhaseRecord, SmartMarketReport, execute_smart_market,
 };
-pub use optimal_slicer::{
-    OptimalSliceConfig, OptimalSliceResult, OptimalSlicer, SliceAdjustment,
-    SliceTransientState,
-};
-pub use twap::{
-    SliceRecord, SliceStatus, TwapConfig, TwapReport, SimpleRng,
-    execute_twap,
-};
+#[cfg(feature = "twap")]
+pub use twap::{SimpleRng, SliceRecord, SliceStatus, TwapConfig, TwapReport, execute_twap};
 pub use utils::{compute_jitter, decimal_to_f64};
+#[cfg(feature = "vwap")]
 pub use vwap::{
     KlineFetcher, VolumeBucket, VolumeProfile, VwapConfig, VwapReport, VwapSchedule, VwapSlice,
     VwapSliceRecord, execute_vwap,

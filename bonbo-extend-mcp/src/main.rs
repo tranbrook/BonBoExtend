@@ -19,15 +19,57 @@
 //! ```
 
 use anyhow::Result;
-use bonbo_extend::registry::PluginRegistry;
+use bonbo_extend::PluginRegistry;
 use bonbo_extend::tools::{
-    BacktestPlugin, JournalPlugin, LearningPlugin, MarketDataPlugin, PortfolioPlugin,
-    PriceAlertPlugin, RegimePlugin, RiskPlugin, ScannerPlugin, SentinelPlugin,
-    SystemMonitorPlugin, TechnicalAnalysisPlugin, TradingPlugin, ValidationPlugin,
+    BacktestPlugin, DerivativesPlugin, JournalPlugin, LearningPlugin, MarketDataPlugin,
+    PortfolioPlugin, PositionAnalyzerPlugin, PriceAlertPlugin, RegimePlugin, RiskPlugin,
+    ScannerPlugin, SentinelPlugin, SystemMonitorPlugin, TechnicalAnalysisPlugin, TradingPlugin,
+    ValidationPlugin,
 };
 use serde_json::{Value, json};
+use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{debug, error, info};
+use std::time::Instant;
+use tokio::sync::RwLock;
+use tracing::{debug, error, info, warn};
+
+// ─── Rate Limiter ─────────────────────────────────────────────
+
+/// Simple per-tool rate limiter using sliding window.
+struct RateLimiter {
+    /// Tool name → list of recent request timestamps.
+    requests: RwLock<HashMap<String, Vec<Instant>>>,
+    /// Max requests per tool per minute.
+    max_per_minute: usize,
+}
+
+impl RateLimiter {
+    fn new(max_per_minute: usize) -> Self {
+        Self {
+            requests: RwLock::new(HashMap::new()),
+            max_per_minute,
+        }
+    }
+
+    /// Check if a request is allowed. Returns false if rate limited.
+    async fn check(&self, tool: &str) -> bool {
+        let now = Instant::now();
+        let cutoff = now - std::time::Duration::from_secs(60);
+        let mut map = self.requests.write().await;
+        let entry = map.entry(tool.to_string()).or_default();
+
+        // Remove expired entries
+        entry.retain(|t| *t > cutoff);
+
+        if entry.len() >= self.max_per_minute {
+            warn!("Rate limited: {} ({} req/min)", tool, entry.len());
+            return false;
+        }
+
+        entry.push(now);
+        true
+    }
+}
 
 // ─── Shared MCP Handler ──────────────────────────────────────────
 
@@ -59,6 +101,9 @@ fn build_registry() -> Result<PluginRegistry> {
     registry.register_tool_plugin(TradingPlugin::new())?;
     // Phase 7: Portfolio Analysis
     registry.register_tool_plugin(PortfolioPlugin::new())?;
+    registry.register_tool_plugin(PositionAnalyzerPlugin::new())?;
+    // Phase 8: Derivatives (Funding, OI, Sentiment, Taker, Volume Profile)
+    registry.register_tool_plugin(DerivativesPlugin::new())?;
     Ok(registry)
 }
 
@@ -124,7 +169,12 @@ fn handle_tools_list(registry: &PluginRegistry, id: Option<Value>) -> Value {
     })
 }
 
-async fn handle_tools_call(registry: &PluginRegistry, params: Value, id: Option<Value>) -> Value {
+async fn handle_tools_call(
+    registry: &PluginRegistry,
+    rate_limiter: &RateLimiter,
+    params: Value,
+    id: Option<Value>,
+) -> Value {
     let tool_name = params.get("name").and_then(|n| n.as_str()).unwrap_or("");
     let arguments = params.get("arguments").cloned().unwrap_or(json!({}));
 
@@ -132,6 +182,26 @@ async fn handle_tools_call(registry: &PluginRegistry, params: Value, id: Option<
         return json!({
             "jsonrpc": "2.0",
             "error": {"code": -32602, "message": "Missing tool name"},
+            "id": id
+        });
+    }
+
+    // Validate tool exists
+    let available_tools = registry.all_tool_schemas();
+    let tool_exists = available_tools.iter().any(|t| t.name == tool_name);
+    if !tool_exists {
+        return json!({
+            "jsonrpc": "2.0",
+            "error": {"code": -32602, "message": format!("Unknown tool: {}", tool_name)},
+            "id": id
+        });
+    }
+
+    // Rate limiting check
+    if !rate_limiter.check(tool_name).await {
+        return json!({
+            "jsonrpc": "2.0",
+            "error": {"code": -32000, "message": format!("Rate limited: {} — too many requests", tool_name)},
             "id": id
         });
     }
@@ -146,19 +216,26 @@ async fn handle_tools_call(registry: &PluginRegistry, params: Value, id: Option<
             },
             "id": id
         }),
-        Err(e) => json!({
-            "jsonrpc": "2.0",
-            "result": {
-                "content": [{"type": "text", "text": format!("Error: {}", e)}],
-                "isError": true
-            },
-            "id": id
-        }),
+        Err(e) => {
+            error!("Tool error ({}): {}", tool_name, e);
+            json!({
+                "jsonrpc": "2.0",
+                "result": {
+                    "content": [{"type": "text", "text": format!("Error: {}", e)}],
+                    "isError": true
+                },
+                "id": id
+            })
+        }
     }
 }
 
 /// Route any JSON-RPC request to the correct handler.
-async fn route_request(registry: &PluginRegistry, request: Value) -> Value {
+async fn route_request(
+    registry: &PluginRegistry,
+    rate_limiter: &RateLimiter,
+    request: Value,
+) -> Value {
     let id = request.get("id").cloned();
     let method = request.get("method").and_then(|m| m.as_str()).unwrap_or("");
     let params = request.get("params").cloned().unwrap_or(json!({}));
@@ -166,7 +243,7 @@ async fn route_request(registry: &PluginRegistry, request: Value) -> Value {
     match method {
         "initialize" => handle_initialize(id),
         "tools/list" => handle_tools_list(registry, id),
-        "tools/call" => handle_tools_call(registry, params, id).await,
+        "tools/call" => handle_tools_call(registry, rate_limiter, params, id).await,
         "ping" => json!({"jsonrpc": "2.0", "result": {}, "id": id}),
         _ => json!({
             "jsonrpc": "2.0",
@@ -178,7 +255,7 @@ async fn route_request(registry: &PluginRegistry, request: Value) -> Value {
 
 // ─── STDIO Transport ─────────────────────────────────────────────
 
-async fn run_stdio(registry: &PluginRegistry) -> Result<()> {
+async fn run_stdio(registry: &PluginRegistry, rate_limiter: &RateLimiter) -> Result<()> {
     use std::io::{self, BufRead, Write};
 
     let stdin = io::stdin();
@@ -215,7 +292,7 @@ async fn run_stdio(registry: &PluginRegistry) -> Result<()> {
             }
         };
 
-        let response = route_request(registry, request).await;
+        let response = route_request(registry, rate_limiter, request).await;
         let mut out = serde_json::to_string(&response)?;
         out.push('\n');
         stdout.write_all(out.as_bytes())?;
@@ -227,7 +304,11 @@ async fn run_stdio(registry: &PluginRegistry) -> Result<()> {
 
 // ─── HTTP Transport (for BonBo McpClient) ────────────────────────
 
-async fn run_http(registry: Arc<PluginRegistry>, port: u16) -> Result<()> {
+async fn run_http(
+    registry: Arc<PluginRegistry>,
+    rate_limiter: Arc<RateLimiter>,
+    port: u16,
+) -> Result<()> {
     use axum::extract::State;
     use axum::http::StatusCode;
     use axum::response::IntoResponse;
@@ -235,14 +316,14 @@ async fn run_http(registry: Arc<PluginRegistry>, port: u16) -> Result<()> {
     use tower_http::cors::CorsLayer;
 
     async fn mcp_endpoint(
-        State(registry): State<Arc<PluginRegistry>>,
+        State((registry, rate_limiter)): State<(Arc<PluginRegistry>, Arc<RateLimiter>)>,
         Json(request): Json<Value>,
     ) -> impl IntoResponse {
         debug!(
             "HTTP request: {}",
             serde_json::to_string(&request).unwrap_or_default()
         );
-        let response = route_request(&registry, request).await;
+        let response = route_request(&registry, &rate_limiter, request).await;
         (StatusCode::OK, Json(response))
     }
 
@@ -250,7 +331,7 @@ async fn run_http(registry: Arc<PluginRegistry>, port: u16) -> Result<()> {
         .route("/mcp", post(mcp_endpoint))
         .route("/", post(mcp_endpoint)) // also accept root
         .layer(CorsLayer::permissive())
-        .with_state(registry);
+        .with_state((registry, rate_limiter));
 
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
     info!("MCP HTTP server listening on http://{}", addr);
@@ -304,14 +385,18 @@ async fn main() -> Result<()> {
     // Initialize plugins
     registry.init_all().await?;
 
+    // Create rate limiter (60 requests per tool per minute)
+    let rate_limiter = RateLimiter::new(60);
+
     if use_http {
         // HTTP mode — for BonBo McpClient (JSON-RPC over HTTP POST)
         let registry = Arc::new(registry);
-        run_http(registry.clone(), port).await?;
+        let rate_limiter = Arc::new(rate_limiter);
+        run_http(registry.clone(), rate_limiter, port).await?;
         registry.shutdown_all().await?;
     } else {
         // Stdio mode — for subprocess/pipe integration
-        run_stdio(&registry).await?;
+        run_stdio(&registry, &rate_limiter).await?;
         registry.shutdown_all().await?;
     }
 
@@ -329,4 +414,64 @@ fn extract_port(args: &[String]) -> Option<u16> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_rate_limiter_allows_under_limit() {
+        let limiter = RateLimiter::new(5);
+        for _ in 0..5 {
+            assert!(limiter.check("test_tool").await);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_rate_limiter_blocks_over_limit() {
+        let limiter = RateLimiter::new(3);
+        assert!(limiter.check("tool_a").await);
+        assert!(limiter.check("tool_a").await);
+        assert!(limiter.check("tool_a").await);
+        assert!(!limiter.check("tool_a").await); // 4th should be blocked
+    }
+
+    #[tokio::test]
+    async fn test_rate_limiter_per_tool_isolation() {
+        let limiter = RateLimiter::new(1);
+        assert!(limiter.check("tool_a").await);
+        assert!(limiter.check("tool_b").await); // Different tool, should pass
+        assert!(!limiter.check("tool_a").await); // Same tool, blocked
+    }
+
+    #[test]
+    fn test_extract_port_with_flag() {
+        let args = vec!["prog".to_string(), "--port".to_string(), "9876".to_string()];
+        assert_eq!(extract_port(&args), Some(9876));
+    }
+
+    #[test]
+    fn test_extract_port_with_equals() {
+        let args = vec!["prog".to_string(), "--port=8080".to_string()];
+        assert_eq!(extract_port(&args), Some(8080));
+    }
+
+    #[test]
+    fn test_extract_port_missing() {
+        let args = vec!["prog".to_string()];
+        assert_eq!(extract_port(&args), None);
+    }
+
+    #[test]
+    fn test_extract_port_invalid() {
+        let args = vec!["prog".to_string(), "--port".to_string(), "abc".to_string()];
+        assert_eq!(extract_port(&args), None);
+    }
+
+    #[test]
+    fn test_build_registry_succeeds() {
+        let registry = build_registry();
+        assert!(registry.is_ok(), "Registry should build successfully");
+    }
 }

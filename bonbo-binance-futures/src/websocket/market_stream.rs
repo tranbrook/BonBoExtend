@@ -59,7 +59,10 @@ pub async fn start_market_stream(
     tx: broadcast::Sender<WsMessage>,
 ) -> anyhow::Result<()> {
     let url = stream_config.to_url(&config.ws_url);
-    tracing::info!("Connecting to market stream: {}", url.split("/ws/").next().unwrap_or(&url));
+    tracing::info!(
+        "Connecting to market stream: {}",
+        url.split("/ws/").next().unwrap_or(&url)
+    );
 
     let mut ws_stream = connect_with_backoff(&url).await?;
 
@@ -101,27 +104,69 @@ fn parse_market_message(text: &str) -> Option<WsMessage> {
         "kline" => {
             let k = data.get("k")?;
             Some(WsMessage::Kline(KlineMessage {
-                symbol: k.get("s").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                interval: k.get("i").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                symbol: k
+                    .get("s")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                interval: k
+                    .get("i")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
                 open_time: k.get("t").and_then(|v| v.as_i64()).unwrap_or(0),
                 close_time: k.get("T").and_then(|v| v.as_i64()).unwrap_or(0),
-                open: k.get("o").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                high: k.get("h").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                low: k.get("l").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                close: k.get("c").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                volume: k.get("v").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                open: k
+                    .get("o")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                high: k
+                    .get("h")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                low: k
+                    .get("l")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                close: k
+                    .get("c")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                volume: k
+                    .get("v")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
                 is_closed: k.get("x").and_then(|v| v.as_bool()).unwrap_or(false),
             }))
         }
-        "markPriceUpdate" => {
-            Some(WsMessage::MarkPrice(MarkPriceMessage {
-                symbol: data.get("s").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                mark_price: data.get("p").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                index_price: data.get("i").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                funding_rate: data.get("r").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                next_funding_time: data.get("T").and_then(|v| v.as_i64()).unwrap_or(0),
-            }))
-        }
+        "markPriceUpdate" => Some(WsMessage::MarkPrice(MarkPriceMessage {
+            symbol: data
+                .get("s")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            mark_price: data
+                .get("p")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            index_price: data
+                .get("i")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            funding_rate: data
+                .get("r")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            next_funding_time: data.get("T").and_then(|v| v.as_i64()).unwrap_or(0),
+        })),
         _ => Some(WsMessage::Raw(text.to_string())),
     }
 }

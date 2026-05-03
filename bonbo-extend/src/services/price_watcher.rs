@@ -1,7 +1,8 @@
 //! Price Watcher Service — monitors crypto prices and triggers alerts.
 
-use crate::plugin::{PluginContext, PluginMetadata, ServicePlugin};
 use async_trait::async_trait;
+use bonbo_data::binance_config::BinanceEndpoints;
+use bonbo_extend_core::{PluginContext, PluginMetadata, ServicePlugin};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -137,10 +138,8 @@ impl ServicePlugin for PriceWatcherService {
 
 /// Fetch current price from Binance.
 async fn fetch_current_price(symbol: &str) -> anyhow::Result<f64> {
-    let url = format!(
-        "https://api.binance.com/api/v3/ticker/price?symbol={}",
-        symbol.to_uppercase()
-    );
+    let ep = BinanceEndpoints::current();
+    let url = ep.ticker_price_url(&symbol.to_uppercase());
     let client = reqwest::Client::new();
     let resp = client.get(&url).send().await?;
     let data: serde_json::Value = resp.json().await?;

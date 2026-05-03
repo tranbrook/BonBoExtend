@@ -5,11 +5,11 @@
 //!
 //! If any step fails, compensating actions cancel previous orders.
 
-use bonbo_binance_futures::models::*;
-use bonbo_binance_futures::rest::algo_orders::{AlgoOrdersClient, AlgoOrderResponse};
-use bonbo_binance_futures::rest::FuturesRestClient;
 use crate::idempotency::IdempotencyTracker;
 use crate::order_builder::OrderBuilder;
+use bonbo_binance_futures::models::*;
+use bonbo_binance_futures::rest::FuturesRestClient;
+use bonbo_binance_futures::rest::algo_orders::{AlgoOrderResponse, AlgoOrdersClient};
 use rust_decimal::Decimal;
 
 /// Result of a saga execution.
@@ -82,7 +82,13 @@ impl TradeParams {
     }
 
     /// Create params for a SHORT trade.
-    pub fn short(symbol: &str, quantity: Decimal, entry: Decimal, sl: Decimal, tp: Decimal) -> Self {
+    pub fn short(
+        symbol: &str,
+        quantity: Decimal,
+        entry: Decimal,
+        sl: Decimal,
+        tp: Decimal,
+    ) -> Self {
         Self {
             symbol: symbol.to_string(),
             side: Side::Sell,
@@ -137,11 +143,7 @@ impl SagaExecutor {
     ///
     /// Entry uses `/fapi/v1/order` (LIMIT or MARKET).
     /// SL and TP use `/fapi/v1/algoOrder` (STOP_MARKET / TAKE_PROFIT_MARKET).
-    pub async fn execute(
-        &self,
-        client: &FuturesRestClient,
-        params: &TradeParams,
-    ) -> SagaResult {
+    pub async fn execute(&self, client: &FuturesRestClient, params: &TradeParams) -> SagaResult {
         let mut compensations = Vec::new();
 
         // Generate unique IDs
@@ -155,27 +157,42 @@ impl SagaExecutor {
         // === Step 1: Place Entry Order (standard API) ===
         tracing::info!(
             "Saga Step 1: Placing entry {} {} @ {}",
-            params.side, params.symbol, params.entry_price
+            params.side,
+            params.symbol,
+            params.entry_price
         );
 
         let entry_order = if self.dry_run {
             self.dry_run_entry(params, &entry_id)
         } else {
             let entry_req = if params.is_long {
-                OrderBuilder::long_entry(&params.symbol, params.quantity, params.entry_price, &entry_id)
+                OrderBuilder::long_entry(
+                    &params.symbol,
+                    params.quantity,
+                    params.entry_price,
+                    &entry_id,
+                )
             } else {
-                OrderBuilder::short_entry(&params.symbol, params.quantity, params.entry_price, &entry_id)
+                OrderBuilder::short_entry(
+                    &params.symbol,
+                    params.quantity,
+                    params.entry_price,
+                    &entry_id,
+                )
             };
             match bonbo_binance_futures::rest::OrdersClient::place_order(client, &entry_req).await {
                 Ok(resp) => resp,
-                Err(e) => return SagaResult::failed(&format!("Entry failed: {}", e), compensations),
+                Err(e) => {
+                    return SagaResult::failed(&format!("Entry failed: {}", e), compensations);
+                }
             }
         };
 
         // === Step 2: Place Stop-Loss (ALGO API) ===
         tracing::info!(
             "Saga Step 2: Placing SL {} @ {} (Algo API)",
-            params.symbol, params.stop_loss
+            params.symbol,
+            params.stop_loss
         );
 
         let sl_algo = if self.dry_run {
@@ -187,21 +204,41 @@ impl SagaExecutor {
                 params.stop_loss,
                 params.sl_side(),
                 true, // closePosition=true
-            ).await {
+            )
+            .await
+            {
                 Ok(resp) => {
                     if resp.is_success() {
                         resp
                     } else {
                         // COMPENSATE: Cancel entry order
-                        tracing::error!("SL rejected: {}. Compensating: cancelling entry", resp.msg);
-                        Self::cancel_entry(client, &params.symbol, entry_order.order_id, &mut compensations).await;
-                        return SagaResult::failed(&format!("SL rejected: {}", resp.msg), compensations);
+                        tracing::error!(
+                            "SL rejected: {}. Compensating: cancelling entry",
+                            resp.msg
+                        );
+                        Self::cancel_entry(
+                            client,
+                            &params.symbol,
+                            entry_order.order_id,
+                            &mut compensations,
+                        )
+                        .await;
+                        return SagaResult::failed(
+                            &format!("SL rejected: {}", resp.msg),
+                            compensations,
+                        );
                     }
                 }
                 Err(e) => {
                     // COMPENSATE: Cancel entry order
                     tracing::error!("SL failed: {}. Compensating: cancelling entry", e);
-                    Self::cancel_entry(client, &params.symbol, entry_order.order_id, &mut compensations).await;
+                    Self::cancel_entry(
+                        client,
+                        &params.symbol,
+                        entry_order.order_id,
+                        &mut compensations,
+                    )
+                    .await;
                     return SagaResult::failed(&format!("SL failed: {}", e), compensations);
                 }
             }
@@ -210,7 +247,8 @@ impl SagaExecutor {
         // === Step 3: Place Take-Profit (ALGO API) ===
         tracing::info!(
             "Saga Step 3: Placing TP {} @ {} (Algo API)",
-            params.symbol, params.take_profit
+            params.symbol,
+            params.take_profit
         );
 
         let tp_algo = if self.dry_run {
@@ -222,23 +260,43 @@ impl SagaExecutor {
                 params.take_profit,
                 params.tp_side(),
                 true, // closePosition=true
-            ).await {
+            )
+            .await
+            {
                 Ok(resp) => {
                     if resp.is_success() {
                         resp
                     } else {
                         // COMPENSATE: Cancel both entry and SL
-                        tracing::error!("TP rejected: {}. Compensating: cancelling entry + SL", resp.msg);
+                        tracing::error!(
+                            "TP rejected: {}. Compensating: cancelling entry + SL",
+                            resp.msg
+                        );
                         Self::cancel_algo(client, sl_algo.algo_id, &mut compensations).await;
-                        Self::cancel_entry(client, &params.symbol, entry_order.order_id, &mut compensations).await;
-                        return SagaResult::failed(&format!("TP rejected: {}", resp.msg), compensations);
+                        Self::cancel_entry(
+                            client,
+                            &params.symbol,
+                            entry_order.order_id,
+                            &mut compensations,
+                        )
+                        .await;
+                        return SagaResult::failed(
+                            &format!("TP rejected: {}", resp.msg),
+                            compensations,
+                        );
                     }
                 }
                 Err(e) => {
                     // COMPENSATE: Cancel both entry and SL
                     tracing::error!("TP failed: {}. Compensating: cancelling entry + SL", e);
                     Self::cancel_algo(client, sl_algo.algo_id, &mut compensations).await;
-                    Self::cancel_entry(client, &params.symbol, entry_order.order_id, &mut compensations).await;
+                    Self::cancel_entry(
+                        client,
+                        &params.symbol,
+                        entry_order.order_id,
+                        &mut compensations,
+                    )
+                    .await;
                     return SagaResult::failed(&format!("TP failed: {}", e), compensations);
                 }
             }
@@ -246,7 +304,10 @@ impl SagaExecutor {
 
         tracing::info!(
             "✅ Saga completed: Entry #{} + SL algo #{} + TP algo #{} for {}",
-            entry_order.order_id, sl_algo.algo_id, tp_algo.algo_id, params.symbol
+            entry_order.order_id,
+            sl_algo.algo_id,
+            tp_algo.algo_id,
+            params.symbol
         );
 
         SagaResult::ok(entry_order, sl_algo, tp_algo)
@@ -259,12 +320,17 @@ impl SagaExecutor {
         order_id: i64,
         compensations: &mut Vec<String>,
     ) {
-        match bonbo_binance_futures::rest::OrdersClient::cancel_order(client, symbol, order_id).await {
+        match bonbo_binance_futures::rest::OrdersClient::cancel_order(client, symbol, order_id)
+            .await
+        {
             Ok(_) => {
                 compensations.push(format!("Cancelled entry order #{}", order_id));
             }
             Err(ce) => {
-                compensations.push(format!("CRITICAL: Failed to cancel entry #{}: {}", order_id, ce));
+                compensations.push(format!(
+                    "CRITICAL: Failed to cancel entry #{}: {}",
+                    order_id, ce
+                ));
             }
         }
     }
@@ -280,7 +346,10 @@ impl SagaExecutor {
                 compensations.push(format!("Cancelled algo order #{}", algo_id));
             }
             Err(ce) => {
-                compensations.push(format!("CRITICAL: Failed to cancel algo #{}: {}", algo_id, ce));
+                compensations.push(format!(
+                    "CRITICAL: Failed to cancel algo #{}: {}",
+                    algo_id, ce
+                ));
             }
         }
     }

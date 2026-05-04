@@ -1,0 +1,27 @@
+[package]
+name = "bonbo-workflow-demo"
+version.workspace = true
+edition.workspace = true
+description = "Full trading workflow demo — Debate + Journal + Memory + Reflection"
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+bonbo-llm-types = { path = "../bonbo-llm-types" }
+bonbo-debate = { path = "../bonbo-debate" }
+bonbo-decision-journal = { path = "../bonbo-decision-journal" }
+bonbo-memory = { path = "../bonbo-memory" }
+bonbo-data = { path = "../bonbo-data" }
+bonbo-ta = { path = "../bonbo-ta" }
+bonbo-regime = { path = "../bonbo-regime" }
+bonbo-risk = { path = "../bonbo-risk" }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+rust_decimal = { workspace = true }
+rust_decimal_macros = "1"
+chrono = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

@@ -22,6 +22,7 @@ members = [
     "bonbo-decision-journal",
     "bonbo-debate",
     "bonbo-memory",
+    "bonbo-workflow-demo",
 ]
 resolver = "2"
 

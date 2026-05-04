@@ -17,6 +17,8 @@
 pub mod config;
 pub mod engine;
 pub mod debators;
+pub mod crypto;
+pub mod reflection;
 
 pub use config::DebateConfig;
 pub use debators::RuleBasedDebator;

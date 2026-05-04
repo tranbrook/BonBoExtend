@@ -1,0 +1,20 @@
+[package]
+name = "bonbo-memory"
+version.workspace = true
+edition.workspace = true
+description = "Episodic memory with embedding-based retrieval for trading decisions"
+
+[dependencies]
+bonbo-llm-types = { path = "../bonbo-llm-types" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rust_decimal = { workspace = true }
+chrono = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+[dev-dependencies]
+tempfile = "3"

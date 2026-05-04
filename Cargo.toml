@@ -21,6 +21,7 @@ members = [
     "bonbo-llm-types",
     "bonbo-decision-journal",
     "bonbo-debate",
+    "bonbo-memory",
 ]
 resolver = "2"
 

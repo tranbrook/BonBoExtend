@@ -330,16 +330,19 @@ async fn main() -> Result<()> {
         .with_env_filter("bonbo_workflow_demo=info,bonbo_debate=info")
         .init();
 
-    // Parse arguments: [--llm | --llm-mini] [SYMBOL]
+    // Parse arguments: [--llm | --llm-mini | --glm5] [SYMBOL]
     let args: Vec<String> = env::args().collect();
-    let use_llm = args.iter().any(|a| a == "--llm" || a == "--llm-mini");
+    let use_llm = args.iter().any(|a| a == "--llm" || a == "--llm-mini" || a == "--glm5");
     let use_llm_mini = args.iter().any(|a| a == "--llm-mini");
+    let use_glm5 = args.iter().any(|a| a == "--glm5");
     let ticker = args.iter()
         .find(|a| !a.starts_with('-') && *a != &args[0])
         .cloned()
         .unwrap_or_else(|| "BTCUSDT".to_string());
 
-    let engine_mode = if use_llm {
+    let engine_mode = if use_glm5 {
+        "GLM-5 (Z.ai)"
+    } else if use_llm {
         if use_llm_mini { "GPT-4o-mini" } else { "GPT-4o" }
     } else {
         "Rule-Based"
@@ -479,19 +482,31 @@ async fn main() -> Result<()> {
 
     // Run research debate
     let research = if use_llm {
-        // LLM mode
-        let llm_config = if use_llm_mini { LlmConfig::gpt4o_mini() } else { LlmConfig::gpt4o() };
+        let llm_config = if use_glm5 {
+            LlmConfig {
+                api_key: std::env::var("ZAI_API_KEY").unwrap_or_default(),
+                model: "glm-5".to_string(),
+                base_url: "https://api.z.ai/api/paas/v4".to_string(),
+                max_tokens: 1024,
+                temperature: 0.3,
+            }
+        } else if use_llm_mini {
+            LlmConfig::gpt4o_mini()
+        } else {
+            LlmConfig::gpt4o()
+        };
+
         if llm_config.is_configured() {
-            println!("│ 🧠 Using LLM: {}", if use_llm_mini { "gpt-4o-mini" } else { "gpt-4o" });
+            println!("│ 🧠 Using LLM: {} @ {}", llm_config.model, llm_config.base_url);
             let llm_engine = LlmDebateEngine::new(llm_config, config.clone());
             llm_engine.run_research_debate(&ticker, &market_summary, &analyst_reports).await?
         } else {
-            println!("│ ⚠️  OPENAI_API_KEY not set → falling back to rule-based");
+            let key_name = if use_glm5 { "ZAI_API_KEY" } else { "OPENAI_API_KEY" };
+            println!("│ ⚠️  {} not set → falling back to rule-based", key_name);
             let rb_engine = DebateEngine::rule_based(config.clone());
             rb_engine.run_research_debate(&ticker, &market_summary, &analyst_reports).await?
         }
     } else {
-        // Rule-based mode
         let engine = DebateEngine::rule_based(config.clone());
         engine.run_research_debate(&ticker, &market_summary, &analyst_reports).await?
     };
@@ -524,13 +539,24 @@ async fn main() -> Result<()> {
     );
 
     let risk = if use_llm {
-        // LLM mode
-        let llm_config = if use_llm_mini { LlmConfig::gpt4o_mini() } else { LlmConfig::gpt4o() };
+        let llm_config = if use_glm5 {
+            LlmConfig {
+                api_key: std::env::var("ZAI_API_KEY").unwrap_or_default(),
+                model: "glm-5".to_string(),
+                base_url: "https://api.z.ai/api/paas/v4".to_string(),
+                max_tokens: 1024,
+                temperature: 0.3,
+            }
+        } else if use_llm_mini {
+            LlmConfig::gpt4o_mini()
+        } else {
+            LlmConfig::gpt4o()
+        };
+
         if llm_config.is_configured() {
             let llm_engine = LlmDebateEngine::new(llm_config, config.clone());
             llm_engine.run_risk_debate(&ticker, &research, &risk_summary).await?
         } else {
-            println!("│ ⚠️  OPENAI_API_KEY not set → fallback rule-based");
             let rb_engine = DebateEngine::rule_based(config.clone());
             rb_engine.run_risk_debate(&ticker, &research, &risk_summary).await?
         }

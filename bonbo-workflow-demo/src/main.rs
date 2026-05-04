@@ -499,7 +499,15 @@ async fn main() -> Result<()> {
         if llm_config.is_configured() {
             println!("│ 🧠 Using LLM: {} @ {}", llm_config.model, llm_config.base_url);
             let llm_engine = LlmDebateEngine::new(llm_config, config.clone());
-            llm_engine.run_research_debate(&ticker, &market_summary, &analyst_reports).await?
+            match llm_engine.run_research_debate(&ticker, &market_summary, &analyst_reports).await {
+                Ok(result) => result,
+                Err(e) => {
+                    println!("│ ⚠️  LLM error: {}", truncate(&e.to_string(), 80));
+                    println!("│ → Falling back to rule-based engine");
+                    let rb_engine = DebateEngine::rule_based(config.clone());
+                    rb_engine.run_research_debate(&ticker, &market_summary, &analyst_reports).await?
+                }
+            }
         } else {
             let key_name = if use_glm5 { "ZAI_API_KEY" } else { "OPENAI_API_KEY" };
             println!("│ ⚠️  {} not set → falling back to rule-based", key_name);
@@ -555,7 +563,14 @@ async fn main() -> Result<()> {
 
         if llm_config.is_configured() {
             let llm_engine = LlmDebateEngine::new(llm_config, config.clone());
-            llm_engine.run_risk_debate(&ticker, &research, &risk_summary).await?
+            match llm_engine.run_risk_debate(&ticker, &research, &risk_summary).await {
+                Ok(result) => result,
+                Err(e) => {
+                    println!("│ ⚠️  LLM risk error: {} → fallback rule-based", truncate(&e.to_string(), 60));
+                    let rb_engine = DebateEngine::rule_based(config.clone());
+                    rb_engine.run_risk_debate(&ticker, &research, &risk_summary).await?
+                }
+            }
         } else {
             let rb_engine = DebateEngine::rule_based(config.clone());
             rb_engine.run_risk_debate(&ticker, &research, &risk_summary).await?

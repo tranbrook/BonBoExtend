@@ -19,10 +19,16 @@ pub mod engine;
 pub mod debators;
 pub mod crypto;
 pub mod reflection;
+pub mod llm_client;
+pub mod llm_debator;
+pub mod llm_engine;
 
 pub use config::DebateConfig;
 pub use debators::RuleBasedDebator;
 pub use engine::DebateEngine;
+pub use llm_client::{LlmClient, LlmConfig, LlmResponse};
+pub use llm_debator::LlmDebator;
+pub use llm_engine::LlmDebateEngine;
 
 use bonbo_llm_types::debate::{DebateArgument, DebatePosition};
 use bonbo_llm_types::{Confidence, TradeDirection};

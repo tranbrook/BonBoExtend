@@ -16,5 +16,9 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }
 async-trait = { workspace = true }
+reqwest = { workspace = true }
 
-[dev-dependencies]
+[features]
+default = []
+# Enable LLM-backed debators (requires OPENAI_API_KEY)
+llm = []

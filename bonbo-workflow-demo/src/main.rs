@@ -1,11 +1,13 @@
 //! BonBo Full Workflow Demo — 9-step trading agents workflow
 //!
-//! Chạy: cargo run --release -p bonbo-workflow-demo -- [SYMBOL]
-//! Mặc định: BTCUSDT
+//! Chạy:
+//!   Rule-based (mặc định): cargo run --release -p bonbo-workflow-demo -- BTCUSDT
+//!   LLM (GPT-4o):          cargo run --release -p bonbo-workflow-demo -- --llm BTCUSDT
+//!   LLM (GPT-4o-mini):     cargo run --release -p bonbo-workflow-demo -- --llm-mini BTCUSDT
 
 use anyhow::Result;
 use bonbo_debate::reflection::{ReflectionInput, TradeReflector};
-use bonbo_debate::{DebateConfig, DebateEngine};
+use bonbo_debate::{DebateConfig, DebateEngine, LlmConfig, LlmDebateEngine};
 use bonbo_decision_journal::{DecisionJournal, JournalConfig};
 use bonbo_llm_types::journal::{
     ExitReason, MarketSnapshot, TradeDecision, TradeOutcome, TradeReflection,
@@ -321,16 +323,33 @@ fn seed_historical_episodes(store: &MemoryStore) -> Result<()> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Load .env file (ignore error if not found)
+    let _ = dotenv::dotenv();
+
     tracing_subscriber::fmt()
         .with_env_filter("bonbo_workflow_demo=info,bonbo_debate=info")
         .init();
 
-    let ticker = env::args().nth(1).unwrap_or_else(|| "BTCUSDT".to_string());
+    // Parse arguments: [--llm | --llm-mini] [SYMBOL]
+    let args: Vec<String> = env::args().collect();
+    let use_llm = args.iter().any(|a| a == "--llm" || a == "--llm-mini");
+    let use_llm_mini = args.iter().any(|a| a == "--llm-mini");
+    let ticker = args.iter()
+        .find(|a| !a.starts_with('-') && *a != &args[0])
+        .cloned()
+        .unwrap_or_else(|| "BTCUSDT".to_string());
+
+    let engine_mode = if use_llm {
+        if use_llm_mini { "GPT-4o-mini" } else { "GPT-4o" }
+    } else {
+        "Rule-Based"
+    };
 
     println!();
     println!("╔══════════════════════════════════════════════════════════════╗");
     println!("║  BONBOEXTEND v0.3.0 — FULL TRADING AGENTS WORKFLOW          ║");
     println!("║  {:52}║", format!("Ticker: {}", ticker));
+    println!("║  {:52}║", format!("Engine: {}", engine_mode));
     println!("║  {:52}║", Utc::now().format("%Y-%m-%d %H:%M UTC").to_string());
     println!("╚══════════════════════════════════════════════════════════════╝");
 
@@ -451,14 +470,31 @@ async fn main() -> Result<()> {
     }
     println!("│");
 
+    // Create engine — rule-based or LLM
     let config = DebateConfig::default();
-    let engine = DebateEngine::rule_based(config.clone());
 
     println!("│ 🔴 Bull Researcher vs 🔵 Bear Researcher");
-    println!("│ Config: {} rounds, threshold {:.0}%",
-        config.max_research_rounds, config.consensus_threshold * Decimal::from(100));
+    println!("│ Engine: {} | {} rounds, threshold {:.0}%",
+        engine_mode, config.max_research_rounds, config.consensus_threshold * Decimal::from(100));
 
-    let research = engine.run_research_debate(&ticker, &market_summary, &analyst_reports).await?;
+    // Run research debate
+    let research = if use_llm {
+        // LLM mode
+        let llm_config = if use_llm_mini { LlmConfig::gpt4o_mini() } else { LlmConfig::gpt4o() };
+        if llm_config.is_configured() {
+            println!("│ 🧠 Using LLM: {}", if use_llm_mini { "gpt-4o-mini" } else { "gpt-4o" });
+            let llm_engine = LlmDebateEngine::new(llm_config, config.clone());
+            llm_engine.run_research_debate(&ticker, &market_summary, &analyst_reports).await?
+        } else {
+            println!("│ ⚠️  OPENAI_API_KEY not set → falling back to rule-based");
+            let rb_engine = DebateEngine::rule_based(config.clone());
+            rb_engine.run_research_debate(&ticker, &market_summary, &analyst_reports).await?
+        }
+    } else {
+        // Rule-based mode
+        let engine = DebateEngine::rule_based(config.clone());
+        engine.run_research_debate(&ticker, &market_summary, &analyst_reports).await?
+    };
 
     sub_header("Kết quả Research Debate");
     println!("│ Consensus:  {:?}", research.consensus_direction);
@@ -487,7 +523,21 @@ async fn main() -> Result<()> {
         md.funding_rate, md.fear_greed,
     );
 
-    let risk = engine.run_risk_debate(&ticker, &research, &risk_summary).await?;
+    let risk = if use_llm {
+        // LLM mode
+        let llm_config = if use_llm_mini { LlmConfig::gpt4o_mini() } else { LlmConfig::gpt4o() };
+        if llm_config.is_configured() {
+            let llm_engine = LlmDebateEngine::new(llm_config, config.clone());
+            llm_engine.run_risk_debate(&ticker, &research, &risk_summary).await?
+        } else {
+            println!("│ ⚠️  OPENAI_API_KEY not set → fallback rule-based");
+            let rb_engine = DebateEngine::rule_based(config.clone());
+            rb_engine.run_risk_debate(&ticker, &research, &risk_summary).await?
+        }
+    } else {
+        let engine = DebateEngine::rule_based(config.clone());
+        engine.run_risk_debate(&ticker, &research, &risk_summary).await?
+    };
 
     sub_header("Kết quả Risk Debate");
     println!("│ 🟢 Aggressive:  {:?}  | size: {:.0}% of Kelly",

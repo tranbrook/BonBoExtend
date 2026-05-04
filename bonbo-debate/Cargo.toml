@@ -1,0 +1,20 @@
+[package]
+name = "bonbo-debate"
+version.workspace = true
+edition.workspace = true
+description = "Multi-agent adversarial debate engine (TradingAgents-inspired)"
+
+[dependencies]
+bonbo-llm-types = { path = "../bonbo-llm-types" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rust_decimal = { workspace = true }
+rust_decimal_macros = { workspace = true }
+chrono = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+
+[dev-dependencies]

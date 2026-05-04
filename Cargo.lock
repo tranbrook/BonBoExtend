@@ -254,6 +254,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "bonbo-debate"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bonbo-llm-types",
+ "chrono",
+ "rust_decimal",
+ "rust_decimal_macros",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "bonbo-decision-journal"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "bonbo-llm-types",
+ "chrono",
+ "rusqlite",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "bonbo-executor"
 version = "0.2.0"
 dependencies = [
@@ -373,6 +408,19 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "bonbo-llm-types"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "rust_decimal",
+ "rust_decimal_macros",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

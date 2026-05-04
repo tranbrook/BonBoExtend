@@ -1,0 +1,21 @@
+[package]
+name = "bonbo-decision-journal"
+version.workspace = true
+edition.workspace = true
+description = "Structured trade decision journal with SQLite persistence"
+
+[dependencies]
+bonbo-llm-types = { path = "../bonbo-llm-types" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rust_decimal = { workspace = true }
+chrono = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+[dev-dependencies]
+tokio = { workspace = true }
+tempfile = "3"

@@ -18,6 +18,9 @@ members = [
     "bonbo-position-manager",
     "bonbo-agent",
     "bonbo-portfolio",
+    "bonbo-llm-types",
+    "bonbo-decision-journal",
+    "bonbo-debate",
 ]
 resolver = "2"
 
